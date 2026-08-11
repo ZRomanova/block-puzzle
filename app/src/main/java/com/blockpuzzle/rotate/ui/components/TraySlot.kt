@@ -54,7 +54,8 @@ fun TraySlot(
     onDrag: (delta: Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDragCancel: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showRotateButton: Boolean = true
 ) {
     var rootPosition by remember { mutableStateOf(Offset.Zero) }
 
@@ -108,16 +109,21 @@ fun TraySlot(
 
         Spacer(Modifier.height(4.dp))
 
-        IconButton(
-            onClick = onRotate,
-            enabled = piece != null,
-            modifier = Modifier.size(40.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Refresh,
-                contentDescription = "Повернуть фигуру",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (piece != null) 0.7f else 0.2f)
-            )
+        if (showRotateButton) {
+            IconButton(
+                onClick = onRotate,
+                enabled = piece != null,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Повернуть фигуру",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (piece != null) 0.7f else 0.2f)
+                )
+            }
+        } else {
+            // Keeps all tray slots the same height as siblings that do show the button.
+            Spacer(Modifier.size(40.dp))
         }
     }
 }

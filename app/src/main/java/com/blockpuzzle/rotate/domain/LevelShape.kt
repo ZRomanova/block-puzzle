@@ -25,8 +25,14 @@ data class LevelShape(
         if (includeMirror && random.nextBoolean()) ShapeSymmetry.mirror(shape.baseCells) else shape.baseCells
 
     companion object {
-        /** For a shape the user just drew in the constructor: mirror-inclusion is decided once, from its geometry. */
-        fun userDrawn(shape: PieceShape, weight: Int = 1): LevelShape =
-            LevelShape(shape, weight, includeMirror = ShapeSymmetry.isChiral(shape.baseCells))
+        /**
+         * For a shape the user just drew in the constructor: mirror-inclusion is decided once,
+         * from its geometry, respecting the level's [allowMirror]/[allowRotation] settings — if
+         * the level doesn't allow mirroring at all, [includeMirror] is forced false regardless
+         * of chirality; [allowRotation] affects what counts as "chiral" in the first place (see
+         * [ShapeSymmetry.isChiral]).
+         */
+        fun userDrawn(shape: PieceShape, weight: Int = 1, allowRotation: Boolean = true, allowMirror: Boolean = true): LevelShape =
+            LevelShape(shape, weight, includeMirror = allowMirror && ShapeSymmetry.isChiral(shape.baseCells, allowRotation))
     }
 }

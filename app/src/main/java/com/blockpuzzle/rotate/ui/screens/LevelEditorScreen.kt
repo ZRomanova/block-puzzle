@@ -76,13 +76,15 @@ fun LevelEditorScreen(
     editingLevel: LevelDefinition?,
     record: Int,
     onBack: () -> Unit,
-    onSave: (name: String, boardSize: Int, colorMode: ScoringMode, algorithm: GameMode, shapes: List<LevelShape>, saveAsCopy: Boolean) -> Unit
+    onSave: (name: String, boardSize: Int, colorMode: ScoringMode, algorithm: GameMode, shapes: List<LevelShape>, allowRotation: Boolean, allowMirror: Boolean, saveAsCopy: Boolean) -> Unit
 ) {
     val draftKey = editingLevel?.tag
     var name by rememberSaveable(draftKey) { mutableStateOf(editingLevel?.name ?: "") }
     var boardSize by rememberSaveable(draftKey) { mutableStateOf(editingLevel?.boardSize ?: DEFAULT_BOARD_SIZE) }
     var colorModeName by rememberSaveable(draftKey) { mutableStateOf((editingLevel?.colorMode ?: ScoringMode.CLASSIC).name) }
     var algorithmName by rememberSaveable(draftKey) { mutableStateOf((editingLevel?.algorithm ?: GameMode.EASY).name) }
+    var allowRotation by rememberSaveable(draftKey) { mutableStateOf(editingLevel?.allowRotation ?: true) }
+    var allowMirror by rememberSaveable(draftKey) { mutableStateOf(editingLevel?.allowMirror ?: true) }
     var shapesJson by rememberSaveable(draftKey) { mutableStateOf(editorJson.encodeToString(editingLevel?.shapes ?: emptyList())) }
     var showShapeDialog by rememberSaveable(draftKey) { mutableStateOf(false) }
     var shapesRemovedNotice by rememberSaveable(draftKey) { mutableStateOf<Int?>(null) }
@@ -173,6 +175,24 @@ fun LevelEditorScreen(
             optionText = { if (it == GameMode.EASY) "Случайный" else "Хитрый" },
             onSelect = { algorithmName = it.name }
         )
+        Spacer(Modifier.height(20.dp))
+
+        LabeledToggleRow(
+            label = "Вращение",
+            options = listOf(true, false),
+            selected = allowRotation,
+            optionText = { if (it) "Включено" else "Выключено" },
+            onSelect = { allowRotation = it }
+        )
+        Spacer(Modifier.height(20.dp))
+
+        LabeledToggleRow(
+            label = "Отражение",
+            options = listOf(true, false),
+            selected = allowMirror,
+            optionText = { if (it) "Включено" else "Выключено" },
+            onSelect = { allowMirror = it }
+        )
         Spacer(Modifier.height(24.dp))
 
         Text("Фигуры", style = MaterialTheme.typography.labelMedium)
@@ -208,14 +228,14 @@ fun LevelEditorScreen(
             Text("Добавить фигуру")
         }
 
-        val unlosable = LevelDefinition.isUnlosable(shapes, boardSize)
+        val unlosable = LevelDefinition.isUnlosable(shapes, boardSize, allowRotation)
         if (unlosable) {
             Spacer(Modifier.height(8.dp))
             Text(
                 if (shapes.all { it.shape.cellCount <= 1 }) {
                     "Нужна хотя бы одна фигура крупнее одной клетки — иначе уровень невозможно проиграть"
                 } else {
-                    "На поле $boardSize×$boardSize фигуры только по 2 клетки почти гарантированно не дадут проиграть — добавьте фигуру покрупнее"
+                    "На поле $boardSize×$boardSize с вращением фигуры только по 2 клетки почти гарантированно не дадут проиграть — добавьте фигуру покрупнее"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error
@@ -228,7 +248,9 @@ fun LevelEditorScreen(
             editingLevel.boardSize != boardSize ||
                 editingLevel.colorMode != colorMode ||
                 editingLevel.algorithm != algorithm ||
-                editingLevel.shapes != shapes
+                editingLevel.shapes != shapes ||
+                editingLevel.allowRotation != allowRotation ||
+                editingLevel.allowMirror != allowMirror
             )
         val hasRecordAtRisk = editingLevel != null && record > 0 && rulesChanged
 
@@ -237,7 +259,7 @@ fun LevelEditorScreen(
                 if (hasRecordAtRisk) {
                     showRecordChoiceDialog = true
                 } else {
-                    onSave(name, boardSize, colorMode, algorithm, shapes, false)
+                    onSave(name, boardSize, colorMode, algorithm, shapes, allowRotation, allowMirror, false)
                 }
             },
             enabled = shapes.isNotEmpty() && !unlosable,
@@ -251,9 +273,11 @@ fun LevelEditorScreen(
         ShapeDrawDialog(
             gridSize = LevelDefinition.editableGridSize(boardSize),
             existingShapes = shapes,
+            allowRotation = allowRotation,
+            allowMirror = allowMirror,
             onDismiss = { showShapeDialog = false },
             onConfirm = { newShape ->
-                replaceShapes(shapes + LevelShape.userDrawn(newShape))
+                replaceShapes(shapes + LevelShape.userDrawn(newShape, allowRotation = allowRotation, allowMirror = allowMirror))
                 showShapeDialog = false
             }
         )
@@ -266,12 +290,12 @@ fun LevelEditorScreen(
             onDismiss = { showRecordChoiceDialog = false },
             onOverwrite = {
                 showRecordChoiceDialog = false
-                onSave(name, boardSize, colorMode, algorithm, shapes, false)
+                onSave(name, boardSize, colorMode, algorithm, shapes, allowRotation, allowMirror, false)
             },
             onSaveAsCopy = {
                 showRecordChoiceDialog = false
                 val copyName = if (name == editingLevel.name) "$name (копия)" else name
-                onSave(copyName, boardSize, colorMode, algorithm, shapes, true)
+                onSave(copyName, boardSize, colorMode, algorithm, shapes, allowRotation, allowMirror, true)
             }
         )
     }
@@ -368,6 +392,8 @@ private fun ShapeRow(
 private fun ShapeDrawDialog(
     gridSize: Int,
     existingShapes: List<LevelShape>,
+    allowRotation: Boolean,
+    allowMirror: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (PieceShape) -> Unit
 ) {
@@ -435,10 +461,17 @@ private fun ShapeDrawDialog(
                             !ShapeConnectivity.isConnected(cells) -> errorMessage = "Клетки фигуры должны соприкасаться"
                             else -> {
                                 val normalized = ShapeSymmetry.normalize(cells.toList())
-                                val newKey = ShapeSymmetry.canonicalKey(normalized)
-                                val isDuplicate = existingShapes.any { ShapeSymmetry.canonicalKey(it.shape.baseCells) == newKey }
+                                val newKey = ShapeSymmetry.canonicalKey(normalized, allowRotation, allowMirror)
+                                val isDuplicate = existingShapes.any {
+                                    ShapeSymmetry.canonicalKey(it.shape.baseCells, allowRotation, allowMirror) == newKey
+                                }
                                 if (isDuplicate) {
-                                    errorMessage = "Такая фигура уже есть (с учётом поворота/отражения)"
+                                    errorMessage = when {
+                                        allowRotation && allowMirror -> "Такая фигура уже есть (с учётом поворота и отражения)"
+                                        allowRotation -> "Такая фигура уже есть (с учётом поворота)"
+                                        allowMirror -> "Такая фигура уже есть (с учётом отражения)"
+                                        else -> "Такая фигура уже есть"
+                                    }
                                 } else {
                                     onConfirm(PieceShape(PieceShape.newCustomId(), normalized))
                                 }

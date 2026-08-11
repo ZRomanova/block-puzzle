@@ -21,14 +21,16 @@ private class FixedPieceGenerator(private val sequence: List<PieceShape>) : Piec
 private fun testLevel(
     boardSize: Int = 8,
     colorMode: ScoringMode = ScoringMode.CLASSIC,
-    algorithm: GameMode = GameMode.EASY
+    algorithm: GameMode = GameMode.EASY,
+    allowRotation: Boolean = true
 ) = LevelDefinition(
     tag = "test",
     name = "test",
     boardSize = boardSize,
     colorMode = colorMode,
     algorithm = algorithm,
-    shapes = PieceShape.LEGACY_CATALOG.map { LevelShape(it) }
+    shapes = PieceShape.LEGACY_CATALOG.map { LevelShape(it) },
+    allowRotation = allowRotation
 )
 
 class GameEngineTest {
@@ -117,6 +119,16 @@ class GameEngineTest {
         engine.rotate(0)
         val after = engine.state.tray[0]!!
         assertEquals((before.rotationSteps + 1) % 4, after.rotationSteps)
+    }
+
+    @Test
+    fun `rotate is a no-op when the level disallows rotation`() {
+        val engine = GameEngine(testLevel(allowRotation = false), FixedPieceGenerator(listOf(PieceShape.TETROMINO_L)))
+        engine.startNewGame()
+        val before = engine.state.tray[0]!!
+        engine.rotate(0)
+        val after = engine.state.tray[0]!!
+        assertEquals(before.rotationSteps, after.rotationSteps)
     }
 
     @Test

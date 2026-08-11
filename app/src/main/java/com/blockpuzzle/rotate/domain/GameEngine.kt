@@ -48,7 +48,9 @@ class GameEngine(
         return state
     }
 
+    /** No-op when [LevelDefinition.allowRotation] is false — the domain layer is the single source of truth for this, not just the UI hiding the button. */
     fun rotate(trayIndex: Int): GameState {
+        if (!level.allowRotation) return state
         val piece = state.tray[trayIndex] ?: return state
         val newTray = state.tray.toMutableList().also { it[trayIndex] = piece.rotatedClockwise() }
         state = state.copy(tray = newTray)

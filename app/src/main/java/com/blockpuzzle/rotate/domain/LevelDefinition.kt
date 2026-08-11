@@ -11,6 +11,14 @@ import kotlinx.serialization.Serializable
  * [tag] is assigned once at creation (see [nextAvailableTag]) and never regenerated on edit,
  * so a level's identity — and its resumable/paused game, if any — survives rule changes.
  * [name] is freely user-editable and carries no identity.
+ *
+ * [allowRotation] and [allowMirror] (added 2026-08-11) default to `true` — the game's original,
+ * still-headline mechanic ("pieces can be freely rotated before placing") and the constructor's
+ * original mirror-pair behavior are unchanged unless a level explicitly opts out. Old persisted
+ * levels that predate these fields decode with both `true`, matching the behavior they always
+ * had. Both are genuine gameplay rules, on par with board size/color mode/algorithm: changing
+ * either on an existing level counts as a rule change for [GameViewModel.saveLevel]'s
+ * record-reset diff, same as any other field here.
  */
 @Serializable
 data class LevelDefinition(
@@ -19,7 +27,9 @@ data class LevelDefinition(
     val boardSize: Int,
     val colorMode: ScoringMode,
     val algorithm: GameMode,
-    val shapes: List<LevelShape>
+    val shapes: List<LevelShape>,
+    val allowRotation: Boolean = true,
+    val allowMirror: Boolean = true
 ) {
     companion object {
         val ALLOWED_BOARD_SIZES = 5..8
@@ -46,36 +56,45 @@ data class LevelDefinition(
 
         /**
          * True when [shapes] is *provably* guaranteed to never produce a game over on a
-         * [boardSize] board. Two cases are provable:
+         * [boardSize] board, given whether this level lets the player rotate a spawned piece
+         * ([allowRotation]). Two cases are provable:
          *
          * 1. Every shape is a single cell (e.g. a pool of only [PieceShape.SINGLE]): a lone
          *    cell always fits in any non-full board — it needs no adjacent empty cell at all —
-         *    so this holds for *any* board size.
+         *    so this holds for *any* board size, and doesn't depend on rotation at all (a point
+         *    has no orientation to rotate).
          *
-         * 2. Every shape is a domino (2 cells) **and [boardSize] is even**: color the board like
-         *    a checkerboard. A domino always covers exactly one black and one white cell, and a
-         *    full row/column of *even* length always contains equally many of each color — so
-         *    placing dominoes and clearing full lines can never unbalance the
+         * 2. Every shape is a domino (2 cells), [boardSize] is even, **and [allowRotation] is
+         *    true**: color the board like a checkerboard. Any 2-cell orthogonally-adjacent
+         *    placement — horizontal or vertical — always covers exactly one black and one white
+         *    cell, and a full row/column of *even* length always contains equally many of each
+         *    color, so placing dominoes and clearing full lines can never unbalance the
          *    black-filled-count == white-filled-count invariant. That rules out the classic
          *    "scattered, mutually non-adjacent single-cell gaps" deadlock (the same
          *    configuration [ShapeConnectivityTest]/[BoardTest] use to demonstrate a domino
          *    *can* be blocked in general) — it would require an all-one-color set of leftover
          *    cells, which is exactly what the invariant forbids. On an **odd**-sized board a
          *    full line has unequal color counts, so a line clear *can* unbalance the two
-         *    colors — there is no such proof there, so odd boards are intentionally not
-         *    flagged for dominoes.
+         *    colors — there is no such proof there. **Requiring [allowRotation]** matters
+         *    because a domino's `baseCells` fix *one* orientation (say horizontal), and
+         *    mirroring a straight 2-cell piece doesn't change that (its mirror image is itself)
+         *    — without rotation, every spawned domino can only ever be placed in that one fixed
+         *    orientation, so a board full of only *vertically*-adjacent empty pairs would block
+         *    it completely even though plenty of empty cells remain. The color-balance argument
+         *    doesn't rescue that case, so it's excluded.
          *
          * This is deliberately narrow. It does not attempt to prove — or disprove — unlosability
          * for any shape with 3+ cells (a 3-cell placement already unbalances the checkerboard
          * invariant by construction, so the same argument doesn't extend), or for shape pools
-         * mixing sizes. Not being flagged here is not proof a level *is* losable, only that
-         * there's no proof it isn't — the conservative default is to allow it rather than risk
-         * blocking a level that's actually fine.
+         * mixing sizes. [allowMirror] doesn't affect either case above (irrelevant to a single
+         * cell; a straight domino is already its own mirror image). Not being flagged here is
+         * not proof a level *is* losable, only that there's no proof it isn't — the conservative
+         * default is to allow it rather than risk blocking a level that's actually fine.
          */
-        fun isUnlosable(shapes: List<LevelShape>, boardSize: Int): Boolean {
+        fun isUnlosable(shapes: List<LevelShape>, boardSize: Int, allowRotation: Boolean): Boolean {
             if (shapes.isEmpty()) return false
             if (shapes.all { it.shape.cellCount <= 1 }) return true
-            if (boardSize % 2 == 0 && shapes.all { it.shape.cellCount == 2 }) return true
+            if (allowRotation && boardSize % 2 == 0 && shapes.all { it.shape.cellCount == 2 }) return true
             return false
         }
     }

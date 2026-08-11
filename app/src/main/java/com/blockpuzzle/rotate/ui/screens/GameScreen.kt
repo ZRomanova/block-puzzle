@@ -182,6 +182,7 @@ fun GameScreen(
                         cellSize = trayCellSize,
                         shapeAreaSize = traySlotSize,
                         isDragging = dragState?.trayIndex == index,
+                        showRotateButton = uiState.level.allowRotation,
                         onRotate = { onRotate(index) },
                         onDragStart = { rootPos ->
                             uiState.tray[index]?.let { piece ->

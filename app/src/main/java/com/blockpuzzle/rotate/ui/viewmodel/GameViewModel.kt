@@ -193,6 +193,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         colorMode: ScoringMode,
         algorithm: GameMode,
         shapes: List<LevelShape>,
+        allowRotation: Boolean,
+        allowMirror: Boolean,
         saveAsCopy: Boolean = false
     ) {
         viewModelScope.launch {
@@ -209,7 +211,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                 existing.boardSize != boardSize ||
                     existing.colorMode != colorMode ||
                     existing.algorithm != algorithm ||
-                    existing.shapes != shapes
+                    existing.shapes != shapes ||
+                    existing.allowRotation != allowRotation ||
+                    existing.allowMirror != allowMirror
                 )
 
             levelsRepository.save(
@@ -219,7 +223,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                     boardSize = boardSize,
                     colorMode = colorMode,
                     algorithm = algorithm,
-                    shapes = shapes
+                    shapes = shapes,
+                    allowRotation = allowRotation,
+                    allowMirror = allowMirror
                 )
             )
             if (rulesChanged) recordsRepository.resetScore(tag)

@@ -1,8 +1,11 @@
 # Block Puzzle 8x8 (rotate) — project notes
 
 Native Android block-puzzle game. Kotlin + Jetpack Compose, MVVM, fully offline
-(no INTERNET permission). Unique mechanic: pieces can be freely rotated before
-placing. Package: `com.blockpuzzle.rotate`.
+(no INTERNET permission). Unique mechanic: pieces can be freely rotated (and,
+for chiral shapes, may spawn mirrored) before placing — **on by default, but
+since 2026-08-11 both are per-level toggles** in the constructor
+(`LevelDefinition.allowRotation`/`allowMirror`), not an unconditional rule of
+the game. Package: `com.blockpuzzle.rotate`.
 
 This file exists so a future Claude Code session (possibly after this folder
 is moved elsewhere) has full context without re-deriving it. Read this before
@@ -24,26 +27,27 @@ making changes.
   into Windows paths, breaking `adb push`. Prefix the command with
   `MSYS_NO_PATHCONV=1` to stop that.
 - Last known-good state (2026-08-11, after the level constructor rewrite +
-  same-day follow-ups): `assembleDebug` and `testDebugUnitTest` both green.
-  Latest APK installed to the test phone via `adb install -r`, pushed to
-  `/sdcard/Download/BlockPuzzle.apk`, and copied to
-  `C:\Users\roman\Desktop\BlockPuzzle.apk`. App launches without crashing
-  (verified via `adb logcat`) and the user has visually confirmed the
-  constructor works on-device — see Status below for exactly which changes
-  that covers and which are still pending her re-confirmation.
+  several same-day follow-up rounds): `assembleDebug` and `testDebugUnitTest`
+  both green as of the rotation/mirror-configurable round. The APK on the
+  phone/desktop is from the *previous* round, though — the phone wasn't
+  reachable over `adb` at the end of the latest round (reinstall once it is).
+  See Status below for exactly which changes have vs. haven't been visually
+  re-confirmed by the user on-device.
 
 ## Architecture
 
 - **domain/** — pure Kotlin, zero Android deps, unit-tested with JUnit4.
   Immutable models (`Board`, `GameState`, `Piece`); every move produces a new
   `GameState`, so undo is just a stack of prior states (`GameEngine.history`).
-  - `LevelDefinition(tag, name, boardSize: Int, colorMode: ScoringMode, algorithm: GameMode, shapes: List<LevelShape>)`
+  - `LevelDefinition(tag, name, boardSize: Int, colorMode: ScoringMode, algorithm: GameMode, shapes: List<LevelShape>, allowRotation: Boolean = true, allowMirror: Boolean = true)`
     is a full game variant — **user-created via the level constructor**, not
     a fixed enum combination. `tag` is the persisted-record key and is
     assigned once at creation (`LevelDefinition.nextAvailableTag`), never
     regenerated on edit. `boardSize` is a free `Int` in `ALLOWED_BOARD_SIZES`
     (5..8) — there is no more `BoardSize` enum. This replaced the old fixed
     `GameVariant` (8 combinations, deleted) — see Notable product decisions.
+    `allowRotation`/`allowMirror` (added 2026-08-11) default `true` so old
+    persisted levels decode with the behavior they always had.
   - `PieceShape(id, baseCells)` replaced the old closed `ShapeType` enum —
     it's an open value type now so the constructor's hand-drawn shapes and
     the 15 built-in ones (`PieceShape.LEGACY_CATALOG`) are the same type.
@@ -56,18 +60,36 @@ making changes.
     and at least one intentionally mirror-less chiral shape (PENTOMINO_L);
     auto-deriving mirroring would silently change the legacy piece
     distribution. See `LevelShape.kt`'s doc comment before touching this.
-  - `LevelDefinition.isUnlosable(shapes, boardSize)` (added 2026-08-11, board
-    size added same day) — true in exactly two *provable* cases: (1) every
-    shape has `cellCount <= 1` (e.g. only `PieceShape.SINGLE`) — a lone cell
-    always fits somewhere until a line clears it, true for any board size;
-    (2) every shape has `cellCount == 2` (domino) **and boardSize is even**
-    — checkerboard-color argument: a domino always covers one black + one
+    `userDrawn` now also takes `allowRotation`/`allowMirror` (the editing
+    level's current toggle values) — `includeMirror` is forced `false`
+    outright when `allowMirror` is off, and `isChiral` itself is computed
+    relative to `allowRotation` (see below) — but this is only consulted
+    **at add-time**; toggling either setting on an existing level does not
+    retroactively touch already-added shapes, same "decided once" principle
+    as everything else about `includeMirror`.
+  - `LevelDefinition.isUnlosable(shapes, boardSize, allowRotation)` (added
+    2026-08-11, `allowRotation` param added same day when rotation became
+    configurable) — true in exactly two *provable* cases: (1) every shape
+    has `cellCount <= 1` (e.g. only `PieceShape.SINGLE`) — a lone cell
+    always fits somewhere until a line clears it, true for any board size
+    *and regardless of the rotation setting* (a point has no orientation);
+    (2) every shape has `cellCount == 2` (domino), `boardSize` is even,
+    **and `allowRotation` is true** — checkerboard-color argument: any
+    2-cell orthogonally-adjacent placement always covers one black + one
     white cell, and a full line of *even* length always splits evenly by
     color, so the black-filled == white-filled invariant can never break,
-    which rules out the classic "scattered isolated single-cell gaps"
-    deadlock. On *odd* board sizes a full line splits unevenly, so a line
-    clear *can* break that invariant — deliberately left unflagged there,
-    no proof either way. Does **not** extend to 3+-cell shapes (a 3-cell
+    ruling out the classic "scattered isolated single-cell gaps" deadlock.
+    **Why `allowRotation` is required for the domino case** (this was a real
+    correctness bug caught while generalizing for the rotation toggle, not
+    obvious up front): a domino's `baseCells` fix *one* orientation, and
+    mirroring a straight 2-cell piece doesn't change it (its mirror image is
+    itself) — without rotation, every spawned domino is stuck in that one
+    fixed orientation, so a board left with only *cross*-oriented adjacent
+    gaps blocks it completely even with plenty of empty cells remaining; the
+    color-balance argument doesn't rescue that case. On *odd* board sizes a
+    full line splits unevenly, so a line clear *can* break the color
+    invariant regardless of rotation — deliberately left unflagged there, no
+    proof either way. Does **not** extend to 3+-cell shapes (a 3-cell
     placement already unbalances the color invariant by construction) or to
     mixed-size pools — see the doc comment before generalizing further,
     this is intentionally narrow rather than a general solvability prover.
@@ -76,6 +98,13 @@ making changes.
     transform group) and `ShapeConnectivity` (8-directional BFS) back the
     level editor's shape-drawing validation: a shape and its rotation/mirror
     can't be added twice, and all cells must be connected diagonally-or-not.
+    `canonicalKey`/`isChiral` both take `allowRotation`/`allowMirror`
+    parameters (default `true`/`true`, added 2026-08-11) so duplicate
+    detection matches exactly what a *player of this specific level* can
+    actually reach — e.g. with rotation off, a shape and its 90°-rotated
+    self are no longer "the same shape" (the player can't rotate between
+    them), so both can coexist as distinct pool entries; with both off,
+    `canonicalKey` reduces to plain exact-shape equality.
   - Piece generation is behind `PieceGenerator`, now over `List<LevelShape>`
     instead of a fixed shape enum: `EasyPieceGenerator` (weighted random —
     `pickWeighted`) vs `HardModePieceSelector` (lookahead — samples
@@ -93,6 +122,11 @@ making changes.
     its slot; a fresh trio of 3 only appears once all three slots are empty.
     This is what makes the game losable (a 1-for-1 refill always bails you
     out with a fresh roll). See `GameEngine.place()`.
+  - `GameEngine.rotate(trayIndex)` (guard added 2026-08-11) is a no-op when
+    `level.allowRotation` is false — the domain layer is the single source
+    of truth for this rather than relying only on the UI hiding the rotate
+    button (`TraySlot`'s `showRotateButton` param, wired from
+    `uiState.level.allowRotation` in `GameScreen`).
   - `PieceColor` enum currently has **6** colors (RED, ORANGE, YELLOW, GREEN,
     BLUE, PURPLE) — deliberately cut down from an original 12 because too
     many close hues made monochrome-line color-bonus play impractical.
@@ -137,8 +171,10 @@ making changes.
   `MainActivity`.
   - `LevelEditorScreen` is one scrollable screen, no wizard: name → board
     size (5/6/7/8, generalized `ToggleButton`/`LabeledToggleRow` from
-    `ui/components/ToggleButton.kt`) → color mode → algorithm → shape list
-    (weight steppers shown only for Случайный) → "Добавить фигуру" opens a
+    `ui/components/ToggleButton.kt`) → color mode → algorithm → **вращение**
+    → **отражение** (both added 2026-08-11, same `LabeledToggleRow<Boolean>`
+    pattern, "Включено"/"Выключено") → shape list (weight steppers shown
+    only for Случайный) → "Добавить фигуру" opens a
     tap-grid `Dialog` (`Trunc(boardSize*0.8)` square, `BoxWithConstraints`-sized
     to always span the dialog's full width — cell size scales to fit, not a
     fixed dp) with live `ShapeConnectivity`/`ShapeSymmetry` validation.
@@ -149,10 +185,17 @@ making changes.
     (`changeBoardSize` filters `shapes` and shows an inline count of how
     many were removed) — added 2026-08-11 after the user found she could
     shrink the board out from under shapes that used to fit. Save is also
-    disabled with an inline message when `LevelDefinition.isUnlosable(shapes, boardSize)`
-    is true. Saving with any *rule* field changed (board size/color
-    mode/algorithm/shapes/weights) resets that level's record via
-    `GameViewModel.saveLevel`'s diff — renaming alone does not. **Unless the
+    disabled with an inline message when
+    `LevelDefinition.isUnlosable(shapes, boardSize, allowRotation)` is true —
+    the message text itself distinguishes the single-cell-only case from the
+    domino/even-board case. The shape-drawing dialog's duplicate-shape error
+    message also adapts to the current вращение/отражение toggles ("с учётом
+    поворота и отражения" / "поворота" / "отражения" / plain "уже есть"),
+    matching whatever `ShapeSymmetry.canonicalKey` is actually checking.
+    Saving with any *rule* field changed (board size/color
+    mode/algorithm/shapes/weights/**вращение/отражение**) resets that
+    level's record via `GameViewModel.saveLevel`'s diff — renaming alone
+    does not. **Unless the
     edited level currently has a nonzero record**, in which case pressing
     Save opens `RecordAtRiskDialog` (added 2026-08-11) offering a choice:
     overwrite in place (resets the record, old one-path behavior) or "save
@@ -162,6 +205,12 @@ making changes.
     " (копия)" appended automatically if the user didn't already rename it,
     so the two don't look identical in the list). A record of 0 skips the
     dialog entirely and saves in place exactly as before.
+  - `LevelDefinition.rulesSummary()` (`ui/components/LevelLabels.kt`) builds
+    the "Однотонный · Случайный · 6×6"-style one-liner shown on level rows,
+    the game top bar, and game-over — it only appends "· без вращения" /
+    "· без отражения" (added 2026-08-11) when a level actually deviates from
+    the all-enabled default, to avoid cluttering every row with two more
+    "· включено" badges nobody needs to see on the common case.
   - `GameScreen`'s top bar shows **score and record side by side** (labeled
     "счёт" / "рекорд"), passed in as `record: Int` from
     `MainActivity`'s `records[state.level.tag]`. The displayed record is
@@ -220,12 +269,40 @@ making changes.
   The user found 8 similarly-named defaults "easy to get confused by" and
   asked for exactly 3, chosen to demonstrate breadth rather than
   completeness: a familiar 8×8 classic (`PieceShape.LEGACY_CATALOG`,
-  Однотонный/Случайный), a 6×6 showing off Цветной scoring + the Хитрый
-  algorithm together, and a 5×5 with a small hand-picked, non-uniformly
-  weighted shape pool to demonstrate that the constructor lets you curate
-  *which* shapes appear and how often — not just accept the full legacy
-  set. See `DefaultLevels.kt`. Don't go back to seeding one level per
-  mode/scoring/size combination without asking again.
+  Однотонный/Случайный, rotation+mirror both on — the original, still-default
+  experience), a 6×6 with rotation turned **off** (Цветной/Хитрый — a
+  meaningfully harder "place it exactly as dealt" variant), and a 5×5 with a
+  small hand-picked, non-uniformly weighted shape pool and mirror turned
+  **off** (so its `TETROMINO_S` always spawns as drawn, never flipped to
+  `Z`). Updated again 2026-08-11 when rotation/mirror became configurable,
+  specifically so the 3 examples would demonstrate the new toggles rather
+  than just sitting at the default. See `DefaultLevels.kt`. Don't go back to
+  seeding one level per mode/scoring/size combination without asking again.
+- **Rotation and mirror are now per-level configurable, not just fixed
+  behavior** (added 2026-08-11): rotation was the game's headline mechanic
+  since before the constructor even existed ("Unique mechanic: pieces can be
+  freely rotated before placing"), and mirroring was always-on for chiral
+  shapes since the constructor shipped. The user asked for both to become
+  level-scoped toggles (`LevelDefinition.allowRotation`/`allowMirror`,
+  default `true`/`true`), explicitly asking that every combination of the
+  two be reasoned through rather than guessed at. That reasoning surfaced a
+  real correctness issue in the just-added domino-`isUnlosable` rule (see
+  above) — it turned out to silently assume rotation was always available —
+  which is exactly the kind of bug this sort of request is meant to catch;
+  worth remembering as a data point for how much these "walk through every
+  combination" asks are worth taking literally rather than skimming. Design
+  choices made along the way, don't re-litigate without asking:
+  - Toggling either setting on an already-saved level does **not**
+    retroactively touch its existing shape list (no re-merging "duplicate"
+    entries that a toggle flip newly makes equivalent, no re-deriving
+    `includeMirror`) — consistent with the pre-existing "`includeMirror` is
+    decided once, at add-time" principle for `LevelShape`. The toggles only
+    affect (a) whether the in-game rotate button works, and (b) how the
+    shape-drawing dialog validates new additions going forward.
+  - Both are genuine gameplay rules, on par with board size/color
+    mode/algorithm — changing either on an existing level triggers the same
+    record-reset (or save-as-copy) flow as any other rule change, no special
+    casing.
 - **A level's shape pool can't be all-single-cell, or (on an even board)
   all-domino** (added 2026-08-11, `LevelDefinition.isUnlosable`, extended
   same day): started from the user's own example ("only a block of 1
@@ -247,7 +324,9 @@ making changes.
   friend and needed something to point them at instead of walking them
   through the mechanics in person. Plain-language sections: goal, controls
   (drag, rotate, undo), what the level settings mean, the constructor, and
-  per-level records/pausing.
+  per-level records/pausing. Updated same day when rotation/mirror became
+  configurable, so "controls" no longer states rotation as an unconditional
+  fact and "what the level settings mean" covers both new toggles.
 - **Топ-5 leaderboard on the main menu** (added 2026-08-11): quick
   "beat my record" access — tapping a row starts or resumes that level
   exactly like a `LevelListScreen` row does (shared `startOrResume` lambda
@@ -298,19 +377,36 @@ domino-only pools on even board sizes (real derivation, not a guess — see
 Notable product decisions), and the record-loss-on-edit problem was fixed
 with the save-as-copy dialog described above.
 
+Most recently: rotation and mirror became per-level configurable toggles
+(`LevelDefinition.allowRotation`/`allowMirror`) — new `LabeledToggleRow`s in
+`LevelEditorScreen`, `ShapeSymmetry.canonicalKey`/`isChiral` parameterized to
+match, `GameEngine.rotate` guarded, `TraySlot`'s rotate button hidden when
+disabled, `rulesSummary()` calling out non-default settings, `RulesScreen`
+and this file updated, and the 3 default levels reworked so each toggle gets
+demonstrated by one of them. Working through every combination of the two
+new toggles (as asked) surfaced a real bug in the just-shipped domino
+`isUnlosable` rule — it implicitly assumed rotation was always available —
+fixed by requiring `allowRotation` for that specific case; see Notable
+product decisions for the full reasoning.
+
 `assembleDebug` and `testDebugUnitTest` both green throughout, including
 `ShapeSymmetryTest`/`ShapeConnectivityTest` (chirality edge cases: S/Z, L/J
-mirror pairs; the lone chiral PENTOMINO_L with no legacy mirror) and
-`LevelDefinitionTest` for `isUnlosable` (now covering both the single-cell
-and domino/even-board cases). APK installed on the test phone and pushed to
-its Downloads folder after every round; launches without crashing per
-`adb logcat` each time. The user visually confirmed the constructor works
-("Проверила, пока всё хорошо") after the *first* round of constructor work;
-none of the follow-up rounds since (board-size shape validation, full-width
-drawing grid, 3 curated defaults, the unlosable checks, or the save-as-copy
-dialog) have been visually re-confirmed by her yet as of this write-up —
-worth an actual walkthrough before assuming the UI/UX details are all
-correct, only the domain logic underneath has real test coverage.
+mirror pairs; the lone chiral PENTOMINO_L with no legacy mirror; new cases
+for `allowRotation`/`allowMirror` parameterization), `LevelDefinitionTest`
+for `isUnlosable` (single-cell, domino/even-board, and the
+domino-needs-rotation cases), and a new `GameEngineTest` case confirming
+`rotate()` is a no-op when disallowed. The user visually confirmed the
+constructor works ("Проверила, пока всё хорошо") after the *first* round of
+constructor work; none of the follow-up rounds since (board-size shape
+validation, full-width drawing grid, 3 curated defaults, the unlosable
+checks, save-as-copy, or this rotation/mirror round) have been visually
+re-confirmed by her yet as of this write-up — worth an actual walkthrough
+before assuming the UI/UX details are all correct, only the domain logic
+underneath has real test coverage. **The phone was not connected over USB
+at the end of this round** (`adb devices` came back empty) — the APK in
+`/sdcard/Download/BlockPuzzle.apk` and on the desktop is from the *previous*
+round; reinstall once the device is reachable again before assuming the
+rotation/mirror UI has ever run on-device at all.
 
 **The test phone's app data was cleared 2026-08-11** (`adb shell pm clear
 com.blockpuzzle.rotate`, the user's explicit choice when asked, over writing
