@@ -58,6 +58,19 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     private val _resumableLevelTags = MutableStateFlow<Set<String>>(emptySet())
     val resumableLevelTags: StateFlow<Set<String>> = _resumableLevelTags.asStateFlow()
 
+    /**
+     * Current score of each paused (not yet finished) game, by level tag. A paused game's score
+     * never reaches [RecordsRepository] until the game actually ends, so a level with a paused
+     * game sitting at, say, 40 points has no *persisted* record yet — but that 40 is a real,
+     * at-risk "best so far" the moment you'd resume and keep playing (same idea as
+     * `GameScreen`'s live `maxOf(record, score)` display). `MainActivity` folds this into the
+     * *effective* record it passes to `LevelEditorScreen`, so editing a level with meaningful
+     * paused progress triggers the same save-as-copy-or-overwrite choice as one with an already
+     * persisted nonzero record.
+     */
+    private val _pausedScores = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val pausedScores: StateFlow<Map<String, Int>> = _pausedScores.asStateFlow()
+
     val levels: StateFlow<List<LevelDefinition>> = levelsRepository.levels
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -231,7 +244,15 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                     allowRotation = allowRotation
                 )
             )
-            if (rulesChanged) recordsRepository.resetScore(tag)
+            if (rulesChanged) {
+                recordsRepository.resetScore(tag)
+                // The paused game (if any) was built under the old rules and its shapes/board no
+                // longer match the level it's filed under - discard it along with the record.
+                // Never reached on the saveAsCopy path (rulesChanged is always false there), so a
+                // paused game stays exactly where it is when the user chooses "save as copy."
+                pausedEngines.remove(tag)
+                updateResumable()
+            }
             _screen.value = Screen.Constructor
         }
     }
@@ -246,6 +267,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun updateResumable() {
         _resumableLevelTags.value = pausedEngines.keys.toSet()
+        _pausedScores.value = pausedEngines.mapValues { (_, e) -> e.state.score }
     }
 
     private fun publish(state: GameState, e: GameEngine, lastClear: PlacementResult?) {

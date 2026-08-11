@@ -362,14 +362,36 @@ making changes.
   record resets) or save as a new, separate copy (original level and its
   record left completely untouched). Don't collapse this back down to
   silent-overwrite-only without asking.
-- **Paused games with a score of 0 aren't kept** (added 2026-08-11, bugfix
-  — see the `GameViewModel.exitToLevelList()` bullet above for the
-  mechanism): the user found that starting a level and immediately backing
-  out, then later editing that level in the constructor, could resume the
-  stale pre-edit game instead of reflecting the edit. Her proposed fix,
-  implemented as-is: treat a 0-score exit as an accidental tap, don't park
-  it. Doesn't address the same staleness risk for a paused game with real
-  progress (nonzero score) — not raised as a concern, not fixed.
+- **Paused games with a score of 0 aren't kept, and a paused game with real
+  progress now counts toward "is this level's record at risk?"** (added
+  2026-08-11, two-part bugfix, second part generalizing the first the same
+  day): the user found that starting a level and immediately backing out,
+  then later editing that level in the constructor, could resume the stale
+  pre-edit game instead of reflecting the edit. First fix, her proposed
+  approach implemented as-is: treat a 0-score exit as an accidental tap,
+  don't park it (`GameViewModel.exitToLevelList()` only calls
+  `pausedEngines[tag] = e` when `e.state.score > 0`). She then asked for
+  the *general* case: a paused game's live score should count the same way
+  a persisted record does when deciding whether editing a level risks
+  losing progress. `GameViewModel.pausedScores: StateFlow<Map<String, Int>>`
+  (populated in `updateResumable()` alongside `resumableLevelTags`, same
+  idea as `GameScreen`'s live `maxOf(record, score)` top-bar display) is
+  folded into the *effective* record `MainActivity` passes to
+  `LevelEditorScreen`: `maxOf(records[tag] ?: 0, pausedScores[tag] ?: 0)`.
+  That's the only change needed on the "detect risk" side — `hasRecordAtRisk`/
+  `RecordAtRiskDialog` in `LevelEditorScreen` already just consume whatever
+  `record` they're given, no changes there. On the save side,
+  `GameViewModel.saveLevel()`'s existing `rulesChanged` branch now also does
+  `pausedEngines.remove(tag)` right alongside `recordsRepository.resetScore(tag)`
+  — so choosing "overwrite" (`saveAsCopy = false`) discards the stale paused
+  game along with the record, while choosing "save as copy" leaves it
+  completely untouched for free: `rulesChanged` is defined as
+  `!saveAsCopy && (...)`, so it's always `false` on the copy path and the
+  `pausedEngines.remove` line is never reached — the unfinished game simply
+  stays parked under the *original* tag, exactly where the user asked for
+  it to remain. No special-casing needed for "effective record is 0 but a
+  paused game still exists" either — `exitToLevelList` never parks a
+  0-score game in the first place, so that combination can't arise.
 - The monotone-color setting (Settings screen, `SettingsRepository`) was
   **removed** 2026-08-10 at the user's request — she found blue (the
   original default) the most readable/contrasty option and didn't want the
@@ -409,6 +431,24 @@ score of 0 could later resume a stale pre-edit game after the level was
 edited in the constructor — fixed by not parking 0-score games at all (the
 user's own proposed fix, implemented as specified; see the
 `GameViewModel.exitToLevelList()` bullet above).
+
+Immediately after: the user asked for that fix's *general* case — a paused
+game with real (nonzero) progress should count the same as a persisted
+record when deciding whether editing a level risks losing something, with
+the existing overwrite-vs-save-as-copy choice applying either way, and a
+paused game preserved exactly where it was on the copy path / discarded on
+the overwrite path. Implemented via `GameViewModel.pausedScores` (a new
+`StateFlow<Map<String, Int>>` populated in `updateResumable()`), folded into
+an effective record `MainActivity` computes as
+`maxOf(records[tag] ?: 0, pausedScores[tag] ?: 0)` before passing it to
+`LevelEditorScreen` — no changes needed to `LevelEditorScreen`'s own
+risk-detection/dialog logic, it already just consumes whatever `record` it's
+given. `saveLevel()`'s existing `rulesChanged` branch now also evicts
+`pausedEngines[tag]` alongside the record reset; since `rulesChanged` is
+always `false` on the save-as-copy path, that eviction is naturally skipped
+there, leaving the paused game parked under the original tag. See the
+"Paused games with a score of 0 aren't kept..." bullet in Notable product
+decisions for the full account.
 
 `assembleDebug` and `testDebugUnitTest` both green throughout. Current
 domain test coverage: `ShapeSymmetryTest` (rotation-only canonicalKey

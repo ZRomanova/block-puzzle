@@ -47,6 +47,7 @@ private fun BlockPuzzleApp(viewModel: GameViewModel = viewModel()) {
     val levels by viewModel.levels.collectAsState()
     val records by viewModel.records.collectAsState()
     val resumableLevelTags by viewModel.resumableLevelTags.collectAsState()
+    val pausedScores by viewModel.pausedScores.collectAsState()
 
     val startOrResume: (LevelDefinition) -> Unit = { level ->
         if (level.tag in resumableLevelTags) viewModel.resumeGame(level.tag) else viewModel.startGame(level)
@@ -96,7 +97,10 @@ private fun BlockPuzzleApp(viewModel: GameViewModel = viewModel()) {
                 }
                 LevelEditorScreen(
                     editingLevel = editingLevel,
-                    record = records[targetScreen.editingTag] ?: 0,
+                    record = maxOf(
+                        records[targetScreen.editingTag] ?: 0,
+                        pausedScores[targetScreen.editingTag] ?: 0
+                    ),
                     onBack = viewModel::goToConstructor,
                     onSave = { name, boardSize, colorMode, algorithm, shapes, allowRotation, saveAsCopy ->
                         viewModel.saveLevel(
