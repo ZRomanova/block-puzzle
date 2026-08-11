@@ -45,12 +45,38 @@ data class LevelDefinition(
         }
 
         /**
-         * True when every shape in [shapes] is a single cell — e.g. a pool containing only
-         * [PieceShape.SINGLE]. A lone cell always fits somewhere on the board until a line
-         * clears it, so such a level can, in practice, never end in a game over: there's no
-         * losing condition, which defeats the point of a puzzle with a score to beat.
+         * True when [shapes] is *provably* guaranteed to never produce a game over on a
+         * [boardSize] board. Two cases are provable:
+         *
+         * 1. Every shape is a single cell (e.g. a pool of only [PieceShape.SINGLE]): a lone
+         *    cell always fits in any non-full board — it needs no adjacent empty cell at all —
+         *    so this holds for *any* board size.
+         *
+         * 2. Every shape is a domino (2 cells) **and [boardSize] is even**: color the board like
+         *    a checkerboard. A domino always covers exactly one black and one white cell, and a
+         *    full row/column of *even* length always contains equally many of each color — so
+         *    placing dominoes and clearing full lines can never unbalance the
+         *    black-filled-count == white-filled-count invariant. That rules out the classic
+         *    "scattered, mutually non-adjacent single-cell gaps" deadlock (the same
+         *    configuration [ShapeConnectivityTest]/[BoardTest] use to demonstrate a domino
+         *    *can* be blocked in general) — it would require an all-one-color set of leftover
+         *    cells, which is exactly what the invariant forbids. On an **odd**-sized board a
+         *    full line has unequal color counts, so a line clear *can* unbalance the two
+         *    colors — there is no such proof there, so odd boards are intentionally not
+         *    flagged for dominoes.
+         *
+         * This is deliberately narrow. It does not attempt to prove — or disprove — unlosability
+         * for any shape with 3+ cells (a 3-cell placement already unbalances the checkerboard
+         * invariant by construction, so the same argument doesn't extend), or for shape pools
+         * mixing sizes. Not being flagged here is not proof a level *is* losable, only that
+         * there's no proof it isn't — the conservative default is to allow it rather than risk
+         * blocking a level that's actually fine.
          */
-        fun isUnlosable(shapes: List<LevelShape>): Boolean =
-            shapes.isNotEmpty() && shapes.all { it.shape.cellCount <= 1 }
+        fun isUnlosable(shapes: List<LevelShape>, boardSize: Int): Boolean {
+            if (shapes.isEmpty()) return false
+            if (shapes.all { it.shape.cellCount <= 1 }) return true
+            if (boardSize % 2 == 0 && shapes.all { it.shape.cellCount == 2 }) return true
+            return false
+        }
     }
 }

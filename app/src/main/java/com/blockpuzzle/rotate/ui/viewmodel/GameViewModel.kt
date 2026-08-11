@@ -179,6 +179,12 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
      * assigned once (on creation) and never regenerated on edit. If any *rule* field differs
      * from the stored version (board size, color mode, algorithm, or the shape/weight set),
      * that level's record is reset — a plain rename does not touch it.
+     *
+     * [saveAsCopy] — when true, always saves as a brand-new level (fresh tag via
+     * [LevelDefinition.nextAvailableTag]) regardless of [editingTag], leaving the original level
+     * (and its record) completely untouched. `LevelEditorScreen` offers this as an alternative to
+     * overwriting whenever the edited level currently has a nonzero record that the rule changes
+     * would otherwise reset.
      */
     fun saveLevel(
         editingTag: String?,
@@ -186,17 +192,20 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         boardSize: Int,
         colorMode: ScoringMode,
         algorithm: GameMode,
-        shapes: List<LevelShape>
+        shapes: List<LevelShape>,
+        saveAsCopy: Boolean = false
     ) {
         viewModelScope.launch {
             val currentLevels = levels.value
             val existing = editingTag?.let { tag -> currentLevels.firstOrNull { it.tag == tag } }
-            val tag = existing?.tag ?: run {
+            val tag = if (existing != null && !saveAsCopy) {
+                existing.tag
+            } else {
                 val base = LevelDefinition.baseTag(colorMode, algorithm, boardSize)
                 LevelDefinition.nextAvailableTag(base, currentLevels.map { it.tag })
             }
             val resolvedName = name.ifBlank { tag }
-            val rulesChanged = existing != null && (
+            val rulesChanged = existing != null && !saveAsCopy && (
                 existing.boardSize != boardSize ||
                     existing.colorMode != colorMode ||
                     existing.algorithm != algorithm ||

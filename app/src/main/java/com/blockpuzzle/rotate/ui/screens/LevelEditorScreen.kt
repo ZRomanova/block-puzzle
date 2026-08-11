@@ -74,8 +74,9 @@ private val editorJson = Json { ignoreUnknownKeys = true }
 @Composable
 fun LevelEditorScreen(
     editingLevel: LevelDefinition?,
+    record: Int,
     onBack: () -> Unit,
-    onSave: (name: String, boardSize: Int, colorMode: ScoringMode, algorithm: GameMode, shapes: List<LevelShape>) -> Unit
+    onSave: (name: String, boardSize: Int, colorMode: ScoringMode, algorithm: GameMode, shapes: List<LevelShape>, saveAsCopy: Boolean) -> Unit
 ) {
     val draftKey = editingLevel?.tag
     var name by rememberSaveable(draftKey) { mutableStateOf(editingLevel?.name ?: "") }
@@ -85,6 +86,7 @@ fun LevelEditorScreen(
     var shapesJson by rememberSaveable(draftKey) { mutableStateOf(editorJson.encodeToString(editingLevel?.shapes ?: emptyList())) }
     var showShapeDialog by rememberSaveable(draftKey) { mutableStateOf(false) }
     var shapesRemovedNotice by rememberSaveable(draftKey) { mutableStateOf<Int?>(null) }
+    var showRecordChoiceDialog by rememberSaveable(draftKey) { mutableStateOf(false) }
 
     val colorMode = ScoringMode.valueOf(colorModeName)
     val algorithm = GameMode.valueOf(algorithmName)
@@ -206,11 +208,15 @@ fun LevelEditorScreen(
             Text("Добавить фигуру")
         }
 
-        val unlosable = LevelDefinition.isUnlosable(shapes)
+        val unlosable = LevelDefinition.isUnlosable(shapes, boardSize)
         if (unlosable) {
             Spacer(Modifier.height(8.dp))
             Text(
-                "Нужна хотя бы одна фигура крупнее одной клетки — иначе уровень невозможно проиграть",
+                if (shapes.all { it.shape.cellCount <= 1 }) {
+                    "Нужна хотя бы одна фигура крупнее одной клетки — иначе уровень невозможно проиграть"
+                } else {
+                    "На поле $boardSize×$boardSize фигуры только по 2 клетки почти гарантированно не дадут проиграть — добавьте фигуру покрупнее"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error
             )
@@ -218,9 +224,21 @@ fun LevelEditorScreen(
 
         Spacer(Modifier.height(32.dp))
 
+        val rulesChanged = editingLevel != null && (
+            editingLevel.boardSize != boardSize ||
+                editingLevel.colorMode != colorMode ||
+                editingLevel.algorithm != algorithm ||
+                editingLevel.shapes != shapes
+            )
+        val hasRecordAtRisk = editingLevel != null && record > 0 && rulesChanged
+
         Button(
             onClick = {
-                onSave(name, boardSize, colorMode, algorithm, shapes)
+                if (hasRecordAtRisk) {
+                    showRecordChoiceDialog = true
+                } else {
+                    onSave(name, boardSize, colorMode, algorithm, shapes, false)
+                }
             },
             enabled = shapes.isNotEmpty() && !unlosable,
             modifier = Modifier.fillMaxWidth()
@@ -239,6 +257,61 @@ fun LevelEditorScreen(
                 showShapeDialog = false
             }
         )
+    }
+
+    if (showRecordChoiceDialog && editingLevel != null) {
+        RecordAtRiskDialog(
+            levelName = editingLevel.name,
+            record = record,
+            onDismiss = { showRecordChoiceDialog = false },
+            onOverwrite = {
+                showRecordChoiceDialog = false
+                onSave(name, boardSize, colorMode, algorithm, shapes, false)
+            },
+            onSaveAsCopy = {
+                showRecordChoiceDialog = false
+                val copyName = if (name == editingLevel.name) "$name (копия)" else name
+                onSave(copyName, boardSize, colorMode, algorithm, shapes, true)
+            }
+        )
+    }
+}
+
+@Composable
+private fun RecordAtRiskDialog(
+    levelName: String,
+    record: Int,
+    onDismiss: () -> Unit,
+    onOverwrite: () -> Unit,
+    onSaveAsCopy: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text("Изменить правила уровня?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "У уровня «$levelName» есть рекорд ($record). Изменение поля, режима, " +
+                        "алгоритма или фигур сбросит его. Можно вместо этого сохранить новые " +
+                        "настройки как отдельную копию — тогда старый уровень с рекордом " +
+                        "останется как есть.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(20.dp))
+
+                Button(onClick = onSaveAsCopy, modifier = Modifier.fillMaxWidth()) {
+                    Text("Сохранить как копию")
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = onOverwrite, modifier = Modifier.fillMaxWidth()) {
+                    Text("Заменить (рекорд сбросится)")
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("Отмена")
+                }
+            }
+        }
     }
 }
 

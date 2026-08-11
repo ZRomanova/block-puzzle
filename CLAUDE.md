@@ -56,13 +56,22 @@ making changes.
     and at least one intentionally mirror-less chiral shape (PENTOMINO_L);
     auto-deriving mirroring would silently change the legacy piece
     distribution. See `LevelShape.kt`'s doc comment before touching this.
-  - `LevelDefinition.isUnlosable(shapes)` (added 2026-08-11) — true when
-    every shape in the pool has `cellCount <= 1` (e.g. a pool of only
-    `PieceShape.SINGLE`). A lone cell always fits somewhere until a line
-    clears it, so such a level can never realistically end in a game over.
-    `LevelEditorScreen` disables Save and shows an inline error while this
-    is true — deliberately a narrow, exact check (not a general solvability
-    prover) matching the concrete case the user flagged.
+  - `LevelDefinition.isUnlosable(shapes, boardSize)` (added 2026-08-11, board
+    size added same day) — true in exactly two *provable* cases: (1) every
+    shape has `cellCount <= 1` (e.g. only `PieceShape.SINGLE`) — a lone cell
+    always fits somewhere until a line clears it, true for any board size;
+    (2) every shape has `cellCount == 2` (domino) **and boardSize is even**
+    — checkerboard-color argument: a domino always covers one black + one
+    white cell, and a full line of *even* length always splits evenly by
+    color, so the black-filled == white-filled invariant can never break,
+    which rules out the classic "scattered isolated single-cell gaps"
+    deadlock. On *odd* board sizes a full line splits unevenly, so a line
+    clear *can* break that invariant — deliberately left unflagged there,
+    no proof either way. Does **not** extend to 3+-cell shapes (a 3-cell
+    placement already unbalances the color invariant by construction) or to
+    mixed-size pools — see the doc comment before generalizing further,
+    this is intentionally narrow rather than a general solvability prover.
+    `LevelEditorScreen` disables Save and shows a matching inline message.
   - `ShapeSymmetry` (canonicalKey/isChiral/rotate90/mirror — the dihedral-8
     transform group) and `ShapeConnectivity` (8-directional BFS) back the
     level editor's shape-drawing validation: a shape and its rotation/mirror
@@ -140,10 +149,19 @@ making changes.
     (`changeBoardSize` filters `shapes` and shows an inline count of how
     many were removed) — added 2026-08-11 after the user found she could
     shrink the board out from under shapes that used to fit. Save is also
-    disabled with an inline message when `LevelDefinition.isUnlosable(shapes)`
+    disabled with an inline message when `LevelDefinition.isUnlosable(shapes, boardSize)`
     is true. Saving with any *rule* field changed (board size/color
     mode/algorithm/shapes/weights) resets that level's record via
-    `GameViewModel.saveLevel`'s diff — renaming alone does not.
+    `GameViewModel.saveLevel`'s diff — renaming alone does not. **Unless the
+    edited level currently has a nonzero record**, in which case pressing
+    Save opens `RecordAtRiskDialog` (added 2026-08-11) offering a choice:
+    overwrite in place (resets the record, old one-path behavior) or "save
+    as a copy" (`saveLevel(..., saveAsCopy = true)` — always takes the
+    fresh-tag path via `nextAvailableTag` regardless of `editingTag`, so the
+    original level and its record are never touched; the copy's name gets
+    " (копия)" appended automatically if the user didn't already rename it,
+    so the two don't look identical in the list). A record of 0 skips the
+    dialog entirely and saves in place exactly as before.
   - `GameScreen`'s top bar shows **score and record side by side** (labeled
     "счёт" / "рекорд"), passed in as `record: Int` from
     `MainActivity`'s `records[state.level.tag]`. The displayed record is
@@ -208,15 +226,22 @@ making changes.
   *which* shapes appear and how often — not just accept the full legacy
   set. See `DefaultLevels.kt`. Don't go back to seeding one level per
   mode/scoring/size combination without asking again.
-- **A level's shape pool can't consist entirely of single-cell shapes**
-  (added 2026-08-11, `LevelDefinition.isUnlosable`): the user's own example
-  was "only a block of 1 cell" — such a level can (in practice) never end
-  in a game over, since a lone cell always fits somewhere until a line
-  clears it. This is deliberately a narrow, exact rule, not an attempt at
-  proving general solvability for arbitrary hand-drawn shape pools — don't
-  expand it into a broader "is this level winnable" solver without asking,
-  that's a much harder and more speculative problem than the concrete case
-  she flagged.
+- **A level's shape pool can't be all-single-cell, or (on an even board)
+  all-domino** (added 2026-08-11, `LevelDefinition.isUnlosable`, extended
+  same day): started from the user's own example ("only a block of 1
+  cell") — provably always placeable, any board size. She then asked
+  whether an all-domino pool on 8×8 had the same problem and asked for the
+  conditions to be *calculated* per board size rather than guessed. The
+  domino case turned out to only be provable for **even** board sizes (a
+  checkerboard-coloring argument — see the domain doc comment); odd sizes
+  (5, 7) are deliberately left unflagged since there's no proof either way
+  there, not because they're known-safe. This does not generalize to any
+  shape with 3+ cells — that's a genuinely harder, unproven question, and
+  the rule stays a narrow "provably always safe" check, not a general
+  solvability prover. Don't expand it further without doing the same kind
+  of actual derivation (or asking) — a plausible-sounding formula that
+  isn't actually proven is worse than no rule at all here, since a false
+  positive would block a level that's actually fine.
 - **Rules screen** (added 2026-08-11, `RulesScreen.kt`, reached via a "?"
   icon top-right of the main menu): the user wanted to share the app with a
   friend and needed something to point them at instead of walking them
@@ -229,6 +254,15 @@ making changes.
   in `MainActivity`). Hidden entirely when no level has a nonzero record yet
   (a fresh install has nothing worth calling "top" until something's been
   played).
+- **Editing a leveled-up level offers "save as copy" instead of only
+  overwrite** (added 2026-08-11): previously any rule change on a level
+  with an existing record silently reset it, full stop. The user wanted
+  records to stop being casualties of experimentation — a record of 0
+  still just saves in place (nothing to lose), but a nonzero record now
+  triggers a choice (`RecordAtRiskDialog`): overwrite (old behavior,
+  record resets) or save as a new, separate copy (original level and its
+  record left completely untouched). Don't collapse this back down to
+  silent-overwrite-only without asking.
 - The monotone-color setting (Settings screen, `SettingsRepository`) was
   **removed** 2026-08-10 at the user's request — she found blue (the
   original default) the most readable/contrasty option and didn't want the
@@ -259,14 +293,24 @@ score-copying logic was dropped, it was only ever relevant to the
 pre-constructor `GameVariant` era), and a new `LevelDefinition.isUnlosable`
 check blocks saving a level whose shape pool is entirely single-cell shapes.
 
+After that: `isUnlosable` extended from single-cell-only to also cover
+domino-only pools on even board sizes (real derivation, not a guess — see
+Notable product decisions), and the record-loss-on-edit problem was fixed
+with the save-as-copy dialog described above.
+
 `assembleDebug` and `testDebugUnitTest` both green throughout, including
 `ShapeSymmetryTest`/`ShapeConnectivityTest` (chirality edge cases: S/Z, L/J
-mirror pairs; the lone chiral PENTOMINO_L with no legacy mirror) and the new
-`LevelDefinitionTest` for `isUnlosable`. APK installed on the test phone and
-pushed to its Downloads folder each round; launches without crashing per
-`adb logcat`, and the user herself visually confirmed the constructor works
-("Проверила, пока всё хорошо") before the two follow-up fixes above — those
-two haven't been visually re-confirmed by her yet as of this write-up.
+mirror pairs; the lone chiral PENTOMINO_L with no legacy mirror) and
+`LevelDefinitionTest` for `isUnlosable` (now covering both the single-cell
+and domino/even-board cases). APK installed on the test phone and pushed to
+its Downloads folder after every round; launches without crashing per
+`adb logcat` each time. The user visually confirmed the constructor works
+("Проверила, пока всё хорошо") after the *first* round of constructor work;
+none of the follow-up rounds since (board-size shape validation, full-width
+drawing grid, 3 curated defaults, the unlosable checks, or the save-as-copy
+dialog) have been visually re-confirmed by her yet as of this write-up —
+worth an actual walkthrough before assuming the UI/UX details are all
+correct, only the domain logic underneath has real test coverage.
 
 **The test phone's app data was cleared 2026-08-11** (`adb shell pm clear
 com.blockpuzzle.rotate`, the user's explicit choice when asked, over writing

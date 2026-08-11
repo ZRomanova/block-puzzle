@@ -96,9 +96,10 @@ private fun BlockPuzzleApp(viewModel: GameViewModel = viewModel()) {
                 }
                 LevelEditorScreen(
                     editingLevel = editingLevel,
+                    record = records[targetScreen.editingTag] ?: 0,
                     onBack = viewModel::goToConstructor,
-                    onSave = { name, boardSize, colorMode, algorithm, shapes ->
-                        viewModel.saveLevel(targetScreen.editingTag, name, boardSize, colorMode, algorithm, shapes)
+                    onSave = { name, boardSize, colorMode, algorithm, shapes, saveAsCopy ->
+                        viewModel.saveLevel(targetScreen.editingTag, name, boardSize, colorMode, algorithm, shapes, saveAsCopy)
                     }
                 )
             }
