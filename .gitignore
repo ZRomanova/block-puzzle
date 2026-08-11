@@ -1,0 +1,21 @@
+# Gradle / build outputs
+.gradle/
+build/
+
+# Local machine config (SDK path is unique per machine)
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Claude Code local-only settings
+.claude/settings.local.json
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Signing keys — never commit these
+*.jks
+*.keystore

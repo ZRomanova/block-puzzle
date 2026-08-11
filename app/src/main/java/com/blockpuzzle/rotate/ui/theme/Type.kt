@@ -1,0 +1,5 @@
+package com.blockpuzzle.rotate.ui.theme
+
+import androidx.compose.material3.Typography
+
+val AppTypography = Typography()
