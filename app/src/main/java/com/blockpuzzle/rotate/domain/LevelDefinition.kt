@@ -12,13 +12,18 @@ import kotlinx.serialization.Serializable
  * so a level's identity — and its resumable/paused game, if any — survives rule changes.
  * [name] is freely user-editable and carries no identity.
  *
- * [allowRotation] and [allowMirror] (added 2026-08-11) default to `true` — the game's original,
- * still-headline mechanic ("pieces can be freely rotated before placing") and the constructor's
- * original mirror-pair behavior are unchanged unless a level explicitly opts out. Old persisted
- * levels that predate these fields decode with both `true`, matching the behavior they always
- * had. Both are genuine gameplay rules, on par with board size/color mode/algorithm: changing
- * either on an existing level counts as a rule change for [GameViewModel.saveLevel]'s
- * record-reset diff, same as any other field here.
+ * [allowRotation] (added 2026-08-11) defaults to `true` — the game's original, still-headline
+ * mechanic ("pieces can be freely rotated before placing") is unchanged unless a level
+ * explicitly opts out. Old persisted levels that predate this field decode with it `true`,
+ * matching the behavior they always had. It's a genuine gameplay rule, on par with board
+ * size/color mode/algorithm: changing it on an existing level counts as a rule change for
+ * [GameViewModel.saveLevel]'s record-reset diff, same as any other field here.
+ *
+ * There is deliberately no equivalent `allowMirror` setting. An earlier version let a shape and
+ * its mirror image count as one pool entry that could spawn as either chirality, with a manual
+ * flip button in-game — the user found that confusing/annoying in practice and asked for it to
+ * be fully reverted (see `ShapeSymmetry`'s doc comment). A shape's mirror image is now just a
+ * second, independent shape the player draws separately if they want it.
  */
 @Serializable
 data class LevelDefinition(
@@ -28,8 +33,7 @@ data class LevelDefinition(
     val colorMode: ScoringMode,
     val algorithm: GameMode,
     val shapes: List<LevelShape>,
-    val allowRotation: Boolean = true,
-    val allowMirror: Boolean = true
+    val allowRotation: Boolean = true
 ) {
     companion object {
         val ALLOWED_BOARD_SIZES = 5..8
@@ -86,10 +90,9 @@ data class LevelDefinition(
          * This is deliberately narrow. It does not attempt to prove — or disprove — unlosability
          * for any shape with 3+ cells (a 3-cell placement already unbalances the checkerboard
          * invariant by construction, so the same argument doesn't extend), or for shape pools
-         * mixing sizes. [allowMirror] doesn't affect either case above (irrelevant to a single
-         * cell; a straight domino is already its own mirror image). Not being flagged here is
-         * not proof a level *is* losable, only that there's no proof it isn't — the conservative
-         * default is to allow it rather than risk blocking a level that's actually fine.
+         * mixing sizes. Not being flagged here is not proof a level *is* losable, only that
+         * there's no proof it isn't — the conservative default is to allow it rather than risk
+         * blocking a level that's actually fine.
          */
         fun isUnlosable(shapes: List<LevelShape>, boardSize: Int, allowRotation: Boolean): Boolean {
             if (shapes.isEmpty()) return false

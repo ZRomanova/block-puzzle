@@ -2,7 +2,6 @@ package com.blockpuzzle.rotate.domain
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -23,8 +22,7 @@ private fun testLevel(
     boardSize: Int = 8,
     colorMode: ScoringMode = ScoringMode.CLASSIC,
     algorithm: GameMode = GameMode.EASY,
-    allowRotation: Boolean = true,
-    allowMirror: Boolean = true
+    allowRotation: Boolean = true
 ) = LevelDefinition(
     tag = "test",
     name = "test",
@@ -32,8 +30,7 @@ private fun testLevel(
     colorMode = colorMode,
     algorithm = algorithm,
     shapes = PieceShape.LEGACY_CATALOG.map { LevelShape(it) },
-    allowRotation = allowRotation,
-    allowMirror = allowMirror
+    allowRotation = allowRotation
 )
 
 class GameEngineTest {
@@ -132,26 +129,6 @@ class GameEngineTest {
         engine.rotate(0)
         val after = engine.state.tray[0]!!
         assertEquals(before.rotationSteps, after.rotationSteps)
-    }
-
-    @Test
-    fun `flip changes only the targeted tray slot's cells`() {
-        val engine = GameEngine(testLevel(), FixedPieceGenerator(listOf(PieceShape.TETROMINO_L)))
-        engine.startNewGame()
-        val before = engine.state.tray[0]!!
-        engine.flip(0)
-        val after = engine.state.tray[0]!!
-        assertNotEquals(before.cells.toSet(), after.cells.toSet())
-    }
-
-    @Test
-    fun `flip is a no-op when the level disallows mirroring`() {
-        val engine = GameEngine(testLevel(allowMirror = false), FixedPieceGenerator(listOf(PieceShape.TETROMINO_L)))
-        engine.startNewGame()
-        val before = engine.state.tray[0]!!
-        engine.flip(0)
-        val after = engine.state.tray[0]!!
-        assertEquals(before.cells.toSet(), after.cells.toSet())
     }
 
     @Test

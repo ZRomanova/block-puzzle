@@ -75,9 +75,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         updateResumable()
 
         val generator = if (level.algorithm == GameMode.EASY) {
-            EasyPieceGenerator(level.shapes, allowRotation = level.allowRotation, allowMirror = level.allowMirror)
+            EasyPieceGenerator(level.shapes, allowRotation = level.allowRotation)
         } else {
-            HardModePieceSelector(level.shapes, allowRotation = level.allowRotation, allowMirror = level.allowMirror)
+            HardModePieceSelector(level.shapes, allowRotation = level.allowRotation)
         }
         val colorProvider = if (level.colorMode == ScoringMode.CLASSIC) {
             { PieceColor.BLUE }
@@ -115,12 +115,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         publish(e.state, e, lastClear = null)
     }
 
-    fun flip(trayIndex: Int) {
-        val e = activeEngine ?: return
-        e.flip(trayIndex)
-        publish(e.state, e, lastClear = null)
-    }
-
     fun undo() {
         val e = activeEngine ?: return
         val restored = e.undo() ?: return
@@ -132,10 +126,16 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         startGame(level)
     }
 
-    /** Leaves the game screen for the level list, parking the current game (if not over) so it can be resumed later. */
+    /**
+     * Leaves the game screen for the level list, parking the current game (if not over and it
+     * has a nonzero score) so it can be resumed later. A score of 0 is treated as an accidental
+     * tap-and-leave rather than a real in-progress game — not parking it means the level starts
+     * fresh next time, instead of resuming a leftover engine that may reference stale rules if
+     * the level gets edited in the meantime (its shapes/board size are captured at start time).
+     */
     fun exitToLevelList() {
         val e = activeEngine
-        if (e != null && !e.state.isGameOver) {
+        if (e != null && !e.state.isGameOver && e.state.score > 0) {
             pausedEngines[e.level.tag] = e
             updateResumable()
         }
@@ -200,7 +200,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         algorithm: GameMode,
         shapes: List<LevelShape>,
         allowRotation: Boolean,
-        allowMirror: Boolean,
         saveAsCopy: Boolean = false
     ) {
         viewModelScope.launch {
@@ -218,8 +217,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                     existing.colorMode != colorMode ||
                     existing.algorithm != algorithm ||
                     existing.shapes != shapes ||
-                    existing.allowRotation != allowRotation ||
-                    existing.allowMirror != allowMirror
+                    existing.allowRotation != allowRotation
                 )
 
             levelsRepository.save(
@@ -230,8 +228,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                     colorMode = colorMode,
                     algorithm = algorithm,
                     shapes = shapes,
-                    allowRotation = allowRotation,
-                    allowMirror = allowMirror
+                    allowRotation = allowRotation
                 )
             )
             if (rulesChanged) recordsRepository.resetScore(tag)

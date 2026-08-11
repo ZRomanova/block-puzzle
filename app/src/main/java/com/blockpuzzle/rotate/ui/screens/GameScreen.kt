@@ -62,7 +62,6 @@ fun GameScreen(
     onCanPlace: (trayIndex: Int, row: Int, col: Int) -> Boolean,
     onLinesPreview: (trayIndex: Int, row: Int, col: Int) -> Pair<Set<Int>, Set<Int>>,
     onRotate: (trayIndex: Int) -> Unit,
-    onFlip: (trayIndex: Int) -> Unit,
     onUndo: () -> Unit,
     onExitToMenu: () -> Unit
 ) {
@@ -184,9 +183,7 @@ fun GameScreen(
                         shapeAreaSize = traySlotSize,
                         isDragging = dragState?.trayIndex == index,
                         showRotateButton = uiState.level.allowRotation,
-                        showMirrorButton = uiState.level.allowMirror,
                         onRotate = { onRotate(index) },
-                        onFlip = { onFlip(index) },
                         onDragStart = { rootPos ->
                             uiState.tray[index]?.let { piece ->
                                 dragState = DragState(index, piece, rootPos)

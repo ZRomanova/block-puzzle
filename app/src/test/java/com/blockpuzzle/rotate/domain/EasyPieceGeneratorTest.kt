@@ -67,15 +67,4 @@ class EasyPieceGeneratorTest {
         }
         assertTrue("expected more than one distinct starting rotation, got $seenSteps", seenSteps.size > 1)
     }
-
-    @Test
-    fun `when mirroring is disallowed, a chiral shape never spawns mirrored`() {
-        val pool = listOf(LevelShape.userDrawn(PieceShape.TETROMINO_L))
-        val generator = EasyPieceGenerator(shapePool = pool, random = Random(5), allowMirror = false)
-        val board = Board()
-        val baseCells = ShapeSymmetry.normalize(PieceShape.TETROMINO_L.baseCells).toSet()
-        repeat(50) {
-            assertEquals(baseCells, generator.nextPiece(board, emptyList()).shape.baseCells.toSet())
-        }
-    }
 }

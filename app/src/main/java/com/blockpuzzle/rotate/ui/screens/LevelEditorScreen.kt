@@ -76,7 +76,7 @@ fun LevelEditorScreen(
     editingLevel: LevelDefinition?,
     record: Int,
     onBack: () -> Unit,
-    onSave: (name: String, boardSize: Int, colorMode: ScoringMode, algorithm: GameMode, shapes: List<LevelShape>, allowRotation: Boolean, allowMirror: Boolean, saveAsCopy: Boolean) -> Unit
+    onSave: (name: String, boardSize: Int, colorMode: ScoringMode, algorithm: GameMode, shapes: List<LevelShape>, allowRotation: Boolean, saveAsCopy: Boolean) -> Unit
 ) {
     val draftKey = editingLevel?.tag
     var name by rememberSaveable(draftKey) { mutableStateOf(editingLevel?.name ?: "") }
@@ -84,7 +84,6 @@ fun LevelEditorScreen(
     var colorModeName by rememberSaveable(draftKey) { mutableStateOf((editingLevel?.colorMode ?: ScoringMode.CLASSIC).name) }
     var algorithmName by rememberSaveable(draftKey) { mutableStateOf((editingLevel?.algorithm ?: GameMode.EASY).name) }
     var allowRotation by rememberSaveable(draftKey) { mutableStateOf(editingLevel?.allowRotation ?: true) }
-    var allowMirror by rememberSaveable(draftKey) { mutableStateOf(editingLevel?.allowMirror ?: true) }
     var shapesJson by rememberSaveable(draftKey) { mutableStateOf(editorJson.encodeToString(editingLevel?.shapes ?: emptyList())) }
     var showShapeDialog by rememberSaveable(draftKey) { mutableStateOf(false) }
     var shapesRemovedNotice by rememberSaveable(draftKey) { mutableStateOf<Int?>(null) }
@@ -184,15 +183,6 @@ fun LevelEditorScreen(
             optionText = { if (it) "Включено" else "Выключено" },
             onSelect = { allowRotation = it }
         )
-        Spacer(Modifier.height(20.dp))
-
-        LabeledToggleRow(
-            label = "Отражение",
-            options = listOf(true, false),
-            selected = allowMirror,
-            optionText = { if (it) "Включено" else "Выключено" },
-            onSelect = { allowMirror = it }
-        )
         Spacer(Modifier.height(24.dp))
 
         Text("Фигуры", style = MaterialTheme.typography.labelMedium)
@@ -211,7 +201,6 @@ fun LevelEditorScreen(
                 shapes.forEachIndexed { index, levelShape ->
                     ShapeRow(
                         levelShape = levelShape,
-                        showMirroredPreview = allowMirror && levelShape.includeMirror,
                         percent = if (algorithm == GameMode.EASY && totalWeight > 0) levelShape.weight * 100 / totalWeight else null,
                         onWeightChange = { newWeight ->
                             replaceShapes(shapes.toMutableList().also { it[index] = levelShape.copy(weight = newWeight) })
@@ -250,8 +239,7 @@ fun LevelEditorScreen(
                 editingLevel.colorMode != colorMode ||
                 editingLevel.algorithm != algorithm ||
                 editingLevel.shapes != shapes ||
-                editingLevel.allowRotation != allowRotation ||
-                editingLevel.allowMirror != allowMirror
+                editingLevel.allowRotation != allowRotation
             )
         val hasRecordAtRisk = editingLevel != null && record > 0 && rulesChanged
 
@@ -260,7 +248,7 @@ fun LevelEditorScreen(
                 if (hasRecordAtRisk) {
                     showRecordChoiceDialog = true
                 } else {
-                    onSave(name, boardSize, colorMode, algorithm, shapes, allowRotation, allowMirror, false)
+                    onSave(name, boardSize, colorMode, algorithm, shapes, allowRotation, false)
                 }
             },
             enabled = shapes.isNotEmpty() && !unlosable,
@@ -276,7 +264,7 @@ fun LevelEditorScreen(
             existingShapes = shapes,
             onDismiss = { showShapeDialog = false },
             onConfirm = { newShape ->
-                replaceShapes(shapes + LevelShape.userDrawn(newShape))
+                replaceShapes(shapes + LevelShape(newShape))
                 showShapeDialog = false
             }
         )
@@ -289,12 +277,12 @@ fun LevelEditorScreen(
             onDismiss = { showRecordChoiceDialog = false },
             onOverwrite = {
                 showRecordChoiceDialog = false
-                onSave(name, boardSize, colorMode, algorithm, shapes, allowRotation, allowMirror, false)
+                onSave(name, boardSize, colorMode, algorithm, shapes, allowRotation, false)
             },
             onSaveAsCopy = {
                 showRecordChoiceDialog = false
                 val copyName = if (name == editingLevel.name) "$name (копия)" else name
-                onSave(copyName, boardSize, colorMode, algorithm, shapes, allowRotation, allowMirror, true)
+                onSave(copyName, boardSize, colorMode, algorithm, shapes, allowRotation, true)
             }
         )
     }
@@ -341,7 +329,6 @@ private fun RecordAtRiskDialog(
 @Composable
 private fun ShapeRow(
     levelShape: LevelShape,
-    showMirroredPreview: Boolean,
     percent: Int?,
     onWeightChange: (Int) -> Unit,
     onDelete: () -> Unit
@@ -358,24 +345,6 @@ private fun ShapeRow(
                     cellSize = cellSize,
                     modifier = Modifier.size(previewPiece.glyphWidth(cellSize), previewPiece.glyphHeight(cellSize))
                 )
-            }
-            // When this shape can actually spawn mirrored in this level, show both variants
-            // side by side — otherwise a shape and its "hidden" mirror twin look identical to
-            // any other single-form entry, which was confusing (see CLAUDE.md).
-            if (showMirroredPreview) {
-                Spacer(Modifier.width(4.dp))
-                Text("/", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
-                Spacer(Modifier.width(4.dp))
-                val mirroredPiece = remember(levelShape.shape) {
-                    Piece(id = "preview-mirror", shape = PieceShape(levelShape.shape.id, ShapeSymmetry.mirror(levelShape.shape.baseCells)), color = PieceColor.BLUE)
-                }
-                Box(modifier = Modifier.size(56.dp), contentAlignment = Alignment.Center) {
-                    ShapeGlyph(
-                        piece = mirroredPiece,
-                        cellSize = cellSize,
-                        modifier = Modifier.size(mirroredPiece.glyphWidth(cellSize), mirroredPiece.glyphHeight(cellSize))
-                    )
-                }
             }
             Spacer(Modifier.width(8.dp))
 
@@ -480,7 +449,7 @@ private fun ShapeDrawDialog(
                                 val newKey = ShapeSymmetry.canonicalKey(normalized)
                                 val isDuplicate = existingShapes.any { ShapeSymmetry.canonicalKey(it.shape.baseCells) == newKey }
                                 if (isDuplicate) {
-                                    errorMessage = "Такая фигура уже есть (с учётом поворота и отражения)"
+                                    errorMessage = "Такая фигура уже есть (с учётом поворота)"
                                 } else {
                                     onConfirm(PieceShape(PieceShape.newCustomId(), normalized))
                                 }

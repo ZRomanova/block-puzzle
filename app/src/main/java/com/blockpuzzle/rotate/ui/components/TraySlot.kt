@@ -4,16 +4,13 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,8 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.blockpuzzle.rotate.domain.Piece
 
 /**
- * One of the 3 tray slots: the piece (if any) on top, then a row with a rotate button and (when
- * the level allows it) a flip/mirror button below it.
+ * One of the 3 tray slots: the piece (if any) on top, a rotate button below it.
  *
  * The drag-gesture detector is keyed on [piece]'s id only, so it survives a
  * rotation (rotating keeps the same id) without restarting mid-gesture. But
@@ -54,14 +50,12 @@ fun TraySlot(
     shapeAreaSize: Dp,
     isDragging: Boolean,
     onRotate: () -> Unit,
-    onFlip: () -> Unit,
     onDragStart: (rootPosition: Offset) -> Unit,
     onDrag: (delta: Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDragCancel: () -> Unit,
     modifier: Modifier = Modifier,
-    showRotateButton: Boolean = true,
-    showMirrorButton: Boolean = false
+    showRotateButton: Boolean = true
 ) {
     var rootPosition by remember { mutableStateOf(Offset.Zero) }
 
@@ -115,37 +109,17 @@ fun TraySlot(
 
         Spacer(Modifier.height(4.dp))
 
-        // No filler spacer for an omitted button: the Row's width should shrink to just
-        // whichever button(s) are actually shown, so a single remaining button ends up
-        // centered under the piece — not offset to one side by an invisible placeholder for
-        // the other one.
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (showRotateButton) {
-                IconButton(
-                    onClick = onRotate,
-                    enabled = piece != null,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Повернуть фигуру",
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (piece != null) 0.7f else 0.2f)
-                    )
-                }
-            }
-
-            if (showMirrorButton) {
-                IconButton(
-                    onClick = onFlip,
-                    enabled = piece != null,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Flip,
-                        contentDescription = "Отразить фигуру",
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (piece != null) 0.7f else 0.2f)
-                    )
-                }
+        if (showRotateButton) {
+            IconButton(
+                onClick = onRotate,
+                enabled = piece != null,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Повернуть фигуру",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (piece != null) 0.7f else 0.2f)
+                )
             }
         }
     }

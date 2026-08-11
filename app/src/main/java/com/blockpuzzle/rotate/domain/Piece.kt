@@ -18,14 +18,6 @@ data class Piece(
 
     fun rotatedClockwise(): Piece = copy(rotationSteps = (rotationSteps + 1) % 4)
 
-    /**
-     * Mirrors whatever this piece currently looks like on screen and makes that the new base
-     * orientation (rotationSteps resets to 0) — simplest way to define "flip" without reasoning
-     * about how mirroring and the existing rotation compose: press it once, the current shape
-     * flips left-right; press it again, it flips back, regardless of intervening rotates.
-     */
-    fun flippedHorizontally(): Piece = copy(shape = PieceShape(shape.id, ShapeSymmetry.mirror(cells)), rotationSteps = 0)
-
     private fun rotate(cells: List<Coordinate>, steps: Int): List<Coordinate> {
         var current = cells
         repeat(((steps % 4) + 4) % 4) {

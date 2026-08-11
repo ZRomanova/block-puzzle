@@ -1,85 +1,41 @@
 package com.blockpuzzle.rotate.domain
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ShapeSymmetryTest {
 
     @Test
-    fun `canonicalKey is invariant across all 8 dihedral transforms`() {
+    fun `canonicalKey is invariant across all 4 rotations`() {
         val cells = PieceShape.TETROMINO_L.baseCells
         val canonical = ShapeSymmetry.canonicalKey(cells)
-        for (transform in ShapeSymmetry.allTransforms(cells)) {
-            assertEquals(canonical, ShapeSymmetry.canonicalKey(transform))
+        var current = cells
+        repeat(4) {
+            assertEquals(canonical, ShapeSymmetry.canonicalKey(current))
+            current = ShapeSymmetry.rotate90(current)
         }
     }
 
     @Test
-    fun `S and Z tetrominoes share a canonical key (mirror images of each other)`() {
-        assertEquals(
+    fun `a shape and its mirror image do NOT share a canonical key`() {
+        // A shape's mirror image is a different shape now — this was an explicit, deliberate
+        // reversal (see ShapeSymmetry's doc comment): an earlier version treated a shape and
+        // its mirror as "the same shape" and the user asked for that to be fully undone.
+        assertNotEquals(
+            ShapeSymmetry.canonicalKey(PieceShape.TETROMINO_L.baseCells),
+            ShapeSymmetry.canonicalKey(PieceShape.TETROMINO_J.baseCells)
+        )
+        assertNotEquals(
             ShapeSymmetry.canonicalKey(PieceShape.TETROMINO_S.baseCells),
             ShapeSymmetry.canonicalKey(PieceShape.TETROMINO_Z.baseCells)
         )
     }
 
     @Test
-    fun `L and J tetrominoes share a canonical key (mirror images of each other)`() {
-        assertEquals(
-            ShapeSymmetry.canonicalKey(PieceShape.TETROMINO_L.baseCells),
-            ShapeSymmetry.canonicalKey(PieceShape.TETROMINO_J.baseCells)
-        )
-    }
-
-    @Test
-    fun `S tetromino is chiral despite being symmetric under 180 degree rotation`() {
-        val cells = PieceShape.TETROMINO_S.baseCells
-        val rotated180 = ShapeSymmetry.rotate90(ShapeSymmetry.rotate90(cells))
-        assertEquals(ShapeSymmetry.normalize(cells).toSet(), rotated180.toSet())
-        assertTrue(ShapeSymmetry.isChiral(cells))
-    }
-
-    @Test
-    fun `L and J tetrominoes are each chiral`() {
-        assertTrue(ShapeSymmetry.isChiral(PieceShape.TETROMINO_L.baseCells))
-        assertTrue(ShapeSymmetry.isChiral(PieceShape.TETROMINO_J.baseCells))
-    }
-
-    @Test
-    fun `single, domino and reflection-symmetric shapes are achiral`() {
-        assertFalse(ShapeSymmetry.isChiral(PieceShape.SINGLE.baseCells))
-        assertFalse(ShapeSymmetry.isChiral(PieceShape.DOMINO.baseCells))
-        assertFalse(ShapeSymmetry.isChiral(PieceShape.TETROMINO_O.baseCells))
-        assertFalse(ShapeSymmetry.isChiral(PieceShape.TETROMINO_T.baseCells))
-        assertFalse(ShapeSymmetry.isChiral(PieceShape.TETROMINO_I.baseCells))
-        assertFalse(ShapeSymmetry.isChiral(PieceShape.PENTOMINO_PLUS.baseCells))
-        assertFalse(ShapeSymmetry.isChiral(PieceShape.PENTOMINO_T.baseCells))
-        assertFalse(ShapeSymmetry.isChiral(PieceShape.PENTOMINO_I.baseCells))
-    }
-
-    @Test
-    fun `the corner triomino is achiral even though it looks asymmetric`() {
-        // Its mirror image equals one of its own 90-degree rotations.
-        assertFalse(ShapeSymmetry.isChiral(PieceShape.TRIOMINO_L.baseCells))
-    }
-
-    @Test
-    fun `tetromino L has exactly one mirror entry (J) in the legacy catalog`() {
-        val key = ShapeSymmetry.canonicalKey(PieceShape.TETROMINO_L.baseCells)
-        val matching = PieceShape.LEGACY_CATALOG.count { ShapeSymmetry.canonicalKey(it.baseCells) == key }
-        assertEquals(2, matching)
-    }
-
-    @Test
-    fun `pentomino L is chiral but has no separate mirror entry in the legacy catalog`() {
-        // This is exactly why LevelShape.includeMirror must be stored explicitly for migrated
-        // legacy shapes rather than derived from isChiral() at spawn time (see LevelShape.kt).
-        assertTrue(ShapeSymmetry.isChiral(PieceShape.PENTOMINO_L.baseCells))
-        val key = ShapeSymmetry.canonicalKey(PieceShape.PENTOMINO_L.baseCells)
-        val matching = PieceShape.LEGACY_CATALOG.count { ShapeSymmetry.canonicalKey(it.baseCells) == key }
-        assertEquals(1, matching)
+    fun `every shape in the legacy catalog has a distinct canonical key`() {
+        val keys = PieceShape.LEGACY_CATALOG.map { ShapeSymmetry.canonicalKey(it.baseCells) }
+        assertEquals(PieceShape.LEGACY_CATALOG.size, keys.toSet().size)
     }
 
     @Test

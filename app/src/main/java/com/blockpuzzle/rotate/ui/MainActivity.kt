@@ -98,10 +98,10 @@ private fun BlockPuzzleApp(viewModel: GameViewModel = viewModel()) {
                     editingLevel = editingLevel,
                     record = records[targetScreen.editingTag] ?: 0,
                     onBack = viewModel::goToConstructor,
-                    onSave = { name, boardSize, colorMode, algorithm, shapes, allowRotation, allowMirror, saveAsCopy ->
+                    onSave = { name, boardSize, colorMode, algorithm, shapes, allowRotation, saveAsCopy ->
                         viewModel.saveLevel(
                             targetScreen.editingTag, name, boardSize, colorMode, algorithm, shapes,
-                            allowRotation, allowMirror, saveAsCopy
+                            allowRotation, saveAsCopy
                         )
                     }
                 )
@@ -115,7 +115,6 @@ private fun BlockPuzzleApp(viewModel: GameViewModel = viewModel()) {
                     onCanPlace = viewModel::canPlace,
                     onLinesPreview = viewModel::linesPreview,
                     onRotate = viewModel::rotate,
-                    onFlip = viewModel::flip,
                     onUndo = viewModel::undo,
                     onExitToMenu = viewModel::exitToLevelList
                 )

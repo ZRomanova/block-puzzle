@@ -8,9 +8,11 @@ import kotlinx.serialization.Serializable
  * value type — the level constructor lets players draw their own shapes
  * alongside the legacy catalog kept below for backward compatibility.
  *
- * Mirror pairs (L/J, S/Z) are listed as distinct legacy constants: a 90/180/270
- * rotation of L never produces J, since that relationship is a reflection, not
- * a rotation (see [ShapeSymmetry.isChiral]).
+ * Mirror pairs (L/J, S/Z) are listed as distinct legacy constants and are
+ * treated as fully independent shapes elsewhere in the domain — a 90/180/270
+ * rotation of L never produces J, since that relationship is a reflection,
+ * not a rotation, and reflections deliberately don't count as "the same
+ * shape" here (see `ShapeSymmetry`'s doc comment).
  */
 @Serializable
 data class PieceShape(val id: String, val baseCells: List<Coordinate>) {

@@ -38,8 +38,7 @@ class HardModePieceSelector(
     private val candidateSampleSize: Int = 6,
     private val minPlayableMoves: Int = 3,
     private val random: Random = Random.Default,
-    private val allowRotation: Boolean = true,
-    private val allowMirror: Boolean = true
+    private val allowRotation: Boolean = true
 ) : PieceGenerator {
 
     internal data class Candidate(
@@ -56,7 +55,7 @@ class HardModePieceSelector(
         val candidates = candidateEntries.map { entry ->
             val candidatePiece = Piece(
                 id = "hard-${random.nextLong()}",
-                shape = PieceShape(entry.shape.id, entry.resolveCells(random, allowMirror)),
+                shape = entry.shape,
                 color = PieceColor.entries[random.nextInt(PieceColor.entries.size)],
                 rotationSteps = initialRotationSteps(allowRotation, random)
             )
