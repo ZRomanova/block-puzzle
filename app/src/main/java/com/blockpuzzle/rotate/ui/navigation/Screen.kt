@@ -5,6 +5,7 @@ import com.blockpuzzle.rotate.domain.LevelDefinition
 /** The app has a fixed, shallow set of screens; no back stack complexity is needed. */
 sealed interface Screen {
     data object Menu : Screen
+    data object Rules : Screen
     data object LevelList : Screen
     data object Constructor : Screen
 

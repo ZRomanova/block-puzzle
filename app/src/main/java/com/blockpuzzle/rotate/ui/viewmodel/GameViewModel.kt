@@ -158,6 +158,10 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         _screen.value = Screen.Menu
     }
 
+    fun goToRules() {
+        _screen.value = Screen.Rules
+    }
+
     fun goToLevelList() {
         _screen.value = Screen.LevelList
     }

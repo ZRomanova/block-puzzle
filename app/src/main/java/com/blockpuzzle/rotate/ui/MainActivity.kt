@@ -23,6 +23,7 @@ import com.blockpuzzle.rotate.ui.screens.GameScreen
 import com.blockpuzzle.rotate.ui.screens.LevelEditorScreen
 import com.blockpuzzle.rotate.ui.screens.LevelListScreen
 import com.blockpuzzle.rotate.ui.screens.MenuScreen
+import com.blockpuzzle.rotate.ui.screens.RulesScreen
 import com.blockpuzzle.rotate.ui.theme.BlockPuzzleTheme
 import com.blockpuzzle.rotate.ui.viewmodel.GameViewModel
 
@@ -67,8 +68,11 @@ private fun BlockPuzzleApp(viewModel: GameViewModel = viewModel()) {
                 records = records,
                 onOpenLevelList = viewModel::goToLevelList,
                 onOpenConstructor = viewModel::goToConstructor,
+                onOpenRules = viewModel::goToRules,
                 onQuickPlay = startOrResume
             )
+
+            is Screen.Rules -> RulesScreen(onBack = viewModel::goToMenu)
 
             is Screen.LevelList -> LevelListScreen(
                 levels = levels,

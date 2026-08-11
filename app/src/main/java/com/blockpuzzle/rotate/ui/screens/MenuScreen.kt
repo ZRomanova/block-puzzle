@@ -2,6 +2,7 @@ package com.blockpuzzle.rotate.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,10 +14,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -35,40 +38,47 @@ fun MenuScreen(
     records: Map<String, Int>,
     onOpenLevelList: () -> Unit,
     onOpenConstructor: () -> Unit,
+    onOpenRules: () -> Unit,
     onQuickPlay: (LevelDefinition) -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "Block Puzzle",
-            style = MaterialTheme.typography.displaySmall,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = "фигуры можно вращать",
-            style = MaterialTheme.typography.bodyMedium
-        )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "Block Puzzle",
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "фигуры можно вращать",
+                style = MaterialTheme.typography.bodyMedium
+            )
 
-        Spacer(Modifier.height(48.dp))
+            Spacer(Modifier.height(48.dp))
 
-        Button(onClick = onOpenLevelList, modifier = Modifier.fillMaxWidth()) {
-            Text("Играть")
+            Button(onClick = onOpenLevelList, modifier = Modifier.fillMaxWidth()) {
+                Text("Играть")
+            }
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(onClick = onOpenConstructor, modifier = Modifier.fillMaxWidth()) {
+                Text("Конструктор")
+            }
+
+            if (topLevels.isNotEmpty()) {
+                Spacer(Modifier.height(32.dp))
+                TopRecordsCard(topLevels = topLevels, records = records, onQuickPlay = onQuickPlay)
+            }
         }
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = onOpenConstructor, modifier = Modifier.fillMaxWidth()) {
-            Text("Конструктор")
-        }
 
-        if (topLevels.isNotEmpty()) {
-            Spacer(Modifier.height(32.dp))
-            TopRecordsCard(topLevels = topLevels, records = records, onQuickPlay = onQuickPlay)
+        IconButton(onClick = onOpenRules, modifier = Modifier.align(Alignment.TopEnd)) {
+            Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = "Правила игры")
         }
     }
 }
