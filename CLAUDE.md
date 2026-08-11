@@ -23,14 +23,14 @@ making changes.
   **Gotcha:** Git Bash/MSYS auto-converts `/sdcard/...`-style destination paths
   into Windows paths, breaking `adb push`. Prefix the command with
   `MSYS_NO_PATHCONV=1` to stop that.
-- Last known-good state (2026-08-11, after the level constructor rewrite):
-  `assembleDebug` and `testDebugUnitTest` both green. Latest APK installed to
-  the test phone via `adb install -r` and copied to
+- Last known-good state (2026-08-11, after the level constructor rewrite +
+  same-day follow-ups): `assembleDebug` and `testDebugUnitTest` both green.
+  Latest APK installed to the test phone via `adb install -r`, pushed to
+  `/sdcard/Download/BlockPuzzle.apk`, and copied to
   `C:\Users\roman\Desktop\BlockPuzzle.apk`. App launches without crashing
-  (verified via `adb logcat`), but the phone's lockscreen (PIN-protected)
-  meant the constructor UI itself wasn't visually walked through by the
-  agent that session — worth an actual play-test before trusting the UI
-  polish, only the domain logic has real test coverage.
+  (verified via `adb logcat`) and the user has visually confirmed the
+  constructor works on-device — see Status below for exactly which changes
+  that covers and which are still pending her re-confirmation.
 
 ## Architecture
 
@@ -56,6 +56,13 @@ making changes.
     and at least one intentionally mirror-less chiral shape (PENTOMINO_L);
     auto-deriving mirroring would silently change the legacy piece
     distribution. See `LevelShape.kt`'s doc comment before touching this.
+  - `LevelDefinition.isUnlosable(shapes)` (added 2026-08-11) — true when
+    every shape in the pool has `cellCount <= 1` (e.g. a pool of only
+    `PieceShape.SINGLE`). A lone cell always fits somewhere until a line
+    clears it, so such a level can never realistically end in a game over.
+    `LevelEditorScreen` disables Save and shows an inline error while this
+    is true — deliberately a narrow, exact check (not a general solvability
+    prover) matching the concrete case the user flagged.
   - `ShapeSymmetry` (canonicalKey/isChiral/rotate90/mirror — the dihedral-8
     transform group) and `ShapeConnectivity` (8-directional BFS) back the
     level editor's shape-drawing validation: a shape and its rotation/mirror
@@ -86,38 +93,56 @@ making changes.
     `delete` decode-mutate-encode inside `edit {}` (transactional).
   - `RecordsRepository` — one high score per level **tag** (plain `String`
     now, not `GameVariant`).
-  - `LegacyMigration.kt` — one-shot, gated by `LevelsRepository.defaultsSeeded`:
-    seeds the 8 old Easy/Hard × Classic/ColorBonus × 8×8/6×6 combinations as
-    regular (fully editable/deletable) levels using the full legacy shape
-    catalog, and copies each old high score (read via the old
-    `"${mode.name}_${scoring.name}_${boardSize.name}"` key format) onto its
-    new tag so nothing already earned was lost in the migration. Kept in its
-    own file, isolated from both repositories, so it's easy to find/delete
-    later.
+  - `DefaultLevels.kt` (`seedDefaultLevelsIfNeeded`, renamed 2026-08-11 from
+    `LegacyMigration.kt`/`migrateLegacyIfNeeded`) — one-shot, gated by
+    `LevelsRepository.defaultsSeeded`: seeds **3** curated example levels
+    (not the original 8 Easy/Hard × Classic/ColorBonus × 8×8/6×6 combos —
+    that many similarly-named defaults was confusing to pick from, see
+    Notable product decisions). The old key-format score-copying logic from
+    the pre-constructor `GameVariant` era was removed along with it — it
+    only ever mattered for the one device that had gone through that
+    original migration, and that device's local app data was cleared
+    2026-08-11 when this change shipped (user's explicit choice, offered
+    the alternative of a non-destructive migration and she picked the
+    simple wipe). Kept in its own file, isolated from both repositories, so
+    it's easy to find/replace again later.
   - (No `SettingsRepository` anymore — the monotone-color picker and Settings
     screen were removed 2026-08-10; see Notable product decisions.)
 - **ui/** — Compose, MVVM. `GameViewModel` holds one `activeEngine` plus a
   `pausedEngines: Map<String /* level tag */, GameEngine>` so **any number of
   levels can each have their own paused/unfinished game simultaneously**
-  (exposed as `resumableLevelTags`). Runs `migrateLegacyIfNeeded` once from
-  `init`. Screens: `Menu` (just 2 buttons: "Играть" → `LevelList`,
-  "Конструктор" → `Constructor`), `LevelList` (pick a level, tap resumes if
-  paused else starts fresh), `Constructor` (list + edit/delete + create),
-  `LevelEditor` (the actual constructor form), `Game`, `GameOver`
-  (`ui/navigation/Screen.kt` sealed interface, driven by `AnimatedContent` in
-  `MainActivity.kt`). There is no more mode/scoring/board-size toggle on the
-  menu and no standalone records card — all of that moved into
-  `LevelEditorScreen` (per-level rule editing) and per-level rows/top bars.
+  (exposed as `resumableLevelTags`). Runs `seedDefaultLevelsIfNeeded` once
+  from `init`. Screens: `Menu` (just 2 buttons: "Играть" → `LevelList`,
+  "Конструктор" → `Constructor`, plus a "?" icon top-right → `Rules`),
+  `Rules` (static plain-language walkthrough for a new player, see
+  `RulesScreen.kt`), `LevelList` (pick a level, tap resumes if paused else
+  starts fresh), `Constructor` (list + edit/delete + create), `LevelEditor`
+  (the actual constructor form), `Game`, `GameOver` (`ui/navigation/Screen.kt`
+  sealed interface, driven by `AnimatedContent` in `MainActivity.kt`). There
+  is no more mode/scoring/board-size toggle on the menu and no standalone
+  records card — all of that moved into `LevelEditorScreen` (per-level rule
+  editing) and per-level rows/top bars. `MenuScreen` also shows a "Топ-5 по
+  рекорду" card (only when at least one level has a nonzero record) with a
+  tap-to-quick-play row per level, sharing the same resume-if-paused logic
+  as `LevelListScreen` via a `startOrResume` lambda built once in
+  `MainActivity`.
   - `LevelEditorScreen` is one scrollable screen, no wizard: name → board
     size (5/6/7/8, generalized `ToggleButton`/`LabeledToggleRow` from
     `ui/components/ToggleButton.kt`) → color mode → algorithm → shape list
     (weight steppers shown only for Случайный) → "Добавить фигуру" opens a
-    tap-grid `Dialog` (`Trunc(boardSize*0.8)` square) with live
-    `ShapeConnectivity`/`ShapeSymmetry` validation. Draft fields use
-    `rememberSaveable` (shapes as a JSON string, since `LevelShape` is
-    already `@Serializable`) so an in-progress draft survives rotation.
-    Saving with any *rule* field changed (board size/color mode/algorithm/
-    shapes/weights) resets that level's record via
+    tap-grid `Dialog` (`Trunc(boardSize*0.8)` square, `BoxWithConstraints`-sized
+    to always span the dialog's full width — cell size scales to fit, not a
+    fixed dp) with live `ShapeConnectivity`/`ShapeSymmetry` validation.
+    Draft fields use `rememberSaveable` (shapes as a JSON string, since
+    `LevelShape` is already `@Serializable`) so an in-progress draft
+    survives rotation. **Shrinking the board size drops any already-added
+    shape that no longer fits** the new `Trunc(boardSize*0.8)` bound
+    (`changeBoardSize` filters `shapes` and shows an inline count of how
+    many were removed) — added 2026-08-11 after the user found she could
+    shrink the board out from under shapes that used to fit. Save is also
+    disabled with an inline message when `LevelDefinition.isUnlosable(shapes)`
+    is true. Saving with any *rule* field changed (board size/color
+    mode/algorithm/shapes/weights) resets that level's record via
     `GameViewModel.saveLevel`'s diff — renaming alone does not.
   - `GameScreen`'s top bar shows **score and record side by side** (labeled
     "счёт" / "рекорд"), passed in as `record: Int` from
@@ -171,6 +196,39 @@ making changes.
   - A shape and its mirror image always count as one shape (shared,
     50/50-split weight at spawn time) — validation blocks adding a
     rotation/reflection duplicate outright.
+- **Only 3 default levels, not 8** (changed 2026-08-11): the original
+  migration seeded all 8 old Easy/Hard × Classic/ColorBonus × 8×8/6×6
+  combos as a safety net so nothing from the pre-constructor game was lost.
+  The user found 8 similarly-named defaults "easy to get confused by" and
+  asked for exactly 3, chosen to demonstrate breadth rather than
+  completeness: a familiar 8×8 classic (`PieceShape.LEGACY_CATALOG`,
+  Однотонный/Случайный), a 6×6 showing off Цветной scoring + the Хитрый
+  algorithm together, and a 5×5 with a small hand-picked, non-uniformly
+  weighted shape pool to demonstrate that the constructor lets you curate
+  *which* shapes appear and how often — not just accept the full legacy
+  set. See `DefaultLevels.kt`. Don't go back to seeding one level per
+  mode/scoring/size combination without asking again.
+- **A level's shape pool can't consist entirely of single-cell shapes**
+  (added 2026-08-11, `LevelDefinition.isUnlosable`): the user's own example
+  was "only a block of 1 cell" — such a level can (in practice) never end
+  in a game over, since a lone cell always fits somewhere until a line
+  clears it. This is deliberately a narrow, exact rule, not an attempt at
+  proving general solvability for arbitrary hand-drawn shape pools — don't
+  expand it into a broader "is this level winnable" solver without asking,
+  that's a much harder and more speculative problem than the concrete case
+  she flagged.
+- **Rules screen** (added 2026-08-11, `RulesScreen.kt`, reached via a "?"
+  icon top-right of the main menu): the user wanted to share the app with a
+  friend and needed something to point them at instead of walking them
+  through the mechanics in person. Plain-language sections: goal, controls
+  (drag, rotate, undo), what the level settings mean, the constructor, and
+  per-level records/pausing.
+- **Топ-5 leaderboard on the main menu** (added 2026-08-11): quick
+  "beat my record" access — tapping a row starts or resumes that level
+  exactly like a `LevelListScreen` row does (shared `startOrResume` lambda
+  in `MainActivity`). Hidden entirely when no level has a nonzero record yet
+  (a fresh install has nothing worth calling "top" until something's been
+  played).
 - The monotone-color setting (Settings screen, `SettingsRepository`) was
   **removed** 2026-08-10 at the user's request — she found blue (the
   original default) the most readable/contrasty option and didn't want the
@@ -187,16 +245,35 @@ making changes.
 
 Level constructor implemented per the plan agreed with the user: domain model
 (`LevelDefinition`/`LevelShape`/`PieceShape`/`ShapeSymmetry`/`ShapeConnectivity`),
-data layer (`LevelsRepository`, re-keyed `RecordsRepository`, `LegacyMigration`),
-and full UI (gutted `MenuScreen`, new `LevelListScreen`/`ConstructorScreen`/
-`LevelEditorScreen` with a tap-to-draw shape dialog). `assembleDebug` and
-`testDebugUnitTest` both green, including new `ShapeSymmetryTest`/
-`ShapeConnectivityTest` covering the chirality edge cases (S/Z, L/J mirror
-pairs; the lone chiral PENTOMINO_L with no legacy mirror). APK installed on
-the test phone and launches without crashing per `adb logcat`, but the phone
-was locked (PIN) so the constructor UI itself has **not been visually
-play-tested yet** — do that first if continuing here, especially the
-shape-drawing dialog and weight steppers, before treating the UI as done.
+data layer (`LevelsRepository`, re-keyed `RecordsRepository`,
+`DefaultLevels.kt`), and full UI (gutted `MenuScreen`, new
+`LevelListScreen`/`ConstructorScreen`/`LevelEditorScreen` with a tap-to-draw
+shape dialog, plus `RulesScreen` and a Топ-5 card on the menu, added later
+the same session). The user then play-tested for real and reported two
+follow-ups, both implemented and shipped this session: shrinking a level's
+board size now drops shapes that no longer fit (with an inline count), and
+the shape-drawing dialog now spans the full dialog width instead of a fixed
+32dp cell size. Then: default levels cut from 8 to 3 curated ones
+(`DefaultLevels.kt` replaced `LegacyMigration.kt` — the old key-format
+score-copying logic was dropped, it was only ever relevant to the
+pre-constructor `GameVariant` era), and a new `LevelDefinition.isUnlosable`
+check blocks saving a level whose shape pool is entirely single-cell shapes.
+
+`assembleDebug` and `testDebugUnitTest` both green throughout, including
+`ShapeSymmetryTest`/`ShapeConnectivityTest` (chirality edge cases: S/Z, L/J
+mirror pairs; the lone chiral PENTOMINO_L with no legacy mirror) and the new
+`LevelDefinitionTest` for `isUnlosable`. APK installed on the test phone and
+pushed to its Downloads folder each round; launches without crashing per
+`adb logcat`, and the user herself visually confirmed the constructor works
+("Проверила, пока всё хорошо") before the two follow-up fixes above — those
+two haven't been visually re-confirmed by her yet as of this write-up.
+
+**The test phone's app data was cleared 2026-08-11** (`adb shell pm clear
+com.blockpuzzle.rotate`, the user's explicit choice when asked, over writing
+a non-destructive migration) so the new 3-default-level set would actually
+appear — any records/paused games that existed on that specific device
+before this point are gone. This was scoped to that one physical device,
+nothing about the app's normal behavior for other installs.
 
 Google Play publishing was explicitly **paused** by the user 2026-08-11 (she
 said she changed her mind about it "for now") in favor of this feature —

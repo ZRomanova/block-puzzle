@@ -5,7 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.blockpuzzle.rotate.data.LevelsRepository
 import com.blockpuzzle.rotate.data.RecordsRepository
-import com.blockpuzzle.rotate.data.migrateLegacyIfNeeded
+import com.blockpuzzle.rotate.data.seedDefaultLevelsIfNeeded
 import com.blockpuzzle.rotate.domain.Board
 import com.blockpuzzle.rotate.domain.EasyPieceGenerator
 import com.blockpuzzle.rotate.domain.GameEngine
@@ -66,7 +66,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     init {
-        viewModelScope.launch { migrateLegacyIfNeeded(levelsRepository, recordsRepository) }
+        viewModelScope.launch { seedDefaultLevelsIfNeeded(levelsRepository) }
     }
 
     /** Starts a fresh game for [level], discarding any paused game previously left for it. */

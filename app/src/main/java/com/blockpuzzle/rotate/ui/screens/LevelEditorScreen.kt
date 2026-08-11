@@ -206,13 +206,23 @@ fun LevelEditorScreen(
             Text("Добавить фигуру")
         }
 
+        val unlosable = LevelDefinition.isUnlosable(shapes)
+        if (unlosable) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Нужна хотя бы одна фигура крупнее одной клетки — иначе уровень невозможно проиграть",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
         Spacer(Modifier.height(32.dp))
 
         Button(
             onClick = {
                 onSave(name, boardSize, colorMode, algorithm, shapes)
             },
-            enabled = shapes.isNotEmpty(),
+            enabled = shapes.isNotEmpty() && !unlosable,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Сохранить")

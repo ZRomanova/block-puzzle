@@ -43,5 +43,14 @@ data class LevelDefinition(
             while ("$base-$suffix" in existingTags) suffix++
             return "$base-$suffix"
         }
+
+        /**
+         * True when every shape in [shapes] is a single cell — e.g. a pool containing only
+         * [PieceShape.SINGLE]. A lone cell always fits somewhere on the board until a line
+         * clears it, so such a level can, in practice, never end in a game over: there's no
+         * losing condition, which defeats the point of a puzzle with a score to beat.
+         */
+        fun isUnlosable(shapes: List<LevelShape>): Boolean =
+            shapes.isNotEmpty() && shapes.all { it.shape.cellCount <= 1 }
     }
 }
