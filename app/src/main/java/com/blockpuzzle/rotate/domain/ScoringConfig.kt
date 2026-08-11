@@ -18,6 +18,9 @@ object ScoringConfig {
     /** Extra flat bonus when an entire cleared line is a single color. */
     const val COLOR_FULL_LINE_BONUS = 10
 
+    /** Default for [LevelDefinition.undoPenaltyPercent] — applies to old persisted levels too. */
+    const val DEFAULT_UNDO_PENALTY_PERCENT = 20
+
     fun scoreForMove(cellsPlaced: Int, linesCleared: Int): Int {
         val cellScore = cellsPlaced * POINTS_PER_CELL
         if (linesCleared <= 0) return cellScore
@@ -37,4 +40,8 @@ object ScoringConfig {
 
     fun colorBonusForMove(clearedLineColors: List<List<PieceColor>>): Int =
         clearedLineColors.sumOf { colorBonusForLine(it) }
+
+    /** Points deducted for one undo: [undoPenaltyPercent]% of the score at the moment undo is pressed (before reverting). */
+    fun undoPenalty(scoreBeforeUndo: Int, undoPenaltyPercent: Int): Int =
+        scoreBeforeUndo * undoPenaltyPercent / 100
 }

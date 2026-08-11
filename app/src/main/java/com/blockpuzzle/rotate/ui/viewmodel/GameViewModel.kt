@@ -213,6 +213,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         algorithm: GameMode,
         shapes: List<LevelShape>,
         allowRotation: Boolean,
+        undoPenaltyPercent: Int,
         saveAsCopy: Boolean = false
     ) {
         viewModelScope.launch {
@@ -230,7 +231,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                     existing.colorMode != colorMode ||
                     existing.algorithm != algorithm ||
                     existing.shapes != shapes ||
-                    existing.allowRotation != allowRotation
+                    existing.allowRotation != allowRotation ||
+                    existing.undoPenaltyPercent != undoPenaltyPercent
                 )
 
             levelsRepository.save(
@@ -241,7 +243,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                     colorMode = colorMode,
                     algorithm = algorithm,
                     shapes = shapes,
-                    allowRotation = allowRotation
+                    allowRotation = allowRotation,
+                    undoPenaltyPercent = undoPenaltyPercent
                 )
             )
             if (rulesChanged) {

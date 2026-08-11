@@ -51,6 +51,7 @@ import com.blockpuzzle.rotate.domain.LevelShape
 import com.blockpuzzle.rotate.domain.Piece
 import com.blockpuzzle.rotate.domain.PieceColor
 import com.blockpuzzle.rotate.domain.PieceShape
+import com.blockpuzzle.rotate.domain.ScoringConfig
 import com.blockpuzzle.rotate.domain.ScoringMode
 import com.blockpuzzle.rotate.domain.ShapeConnectivity
 import com.blockpuzzle.rotate.domain.ShapeSymmetry
@@ -76,7 +77,7 @@ fun LevelEditorScreen(
     editingLevel: LevelDefinition?,
     record: Int,
     onBack: () -> Unit,
-    onSave: (name: String, boardSize: Int, colorMode: ScoringMode, algorithm: GameMode, shapes: List<LevelShape>, allowRotation: Boolean, saveAsCopy: Boolean) -> Unit
+    onSave: (name: String, boardSize: Int, colorMode: ScoringMode, algorithm: GameMode, shapes: List<LevelShape>, allowRotation: Boolean, undoPenaltyPercent: Int, saveAsCopy: Boolean) -> Unit
 ) {
     val draftKey = editingLevel?.tag
     var name by rememberSaveable(draftKey) { mutableStateOf(editingLevel?.name ?: "") }
@@ -84,6 +85,9 @@ fun LevelEditorScreen(
     var colorModeName by rememberSaveable(draftKey) { mutableStateOf((editingLevel?.colorMode ?: ScoringMode.CLASSIC).name) }
     var algorithmName by rememberSaveable(draftKey) { mutableStateOf((editingLevel?.algorithm ?: GameMode.EASY).name) }
     var allowRotation by rememberSaveable(draftKey) { mutableStateOf(editingLevel?.allowRotation ?: true) }
+    var undoPenaltyPercent by rememberSaveable(draftKey) {
+        mutableStateOf(editingLevel?.undoPenaltyPercent ?: ScoringConfig.DEFAULT_UNDO_PENALTY_PERCENT)
+    }
     var shapesJson by rememberSaveable(draftKey) { mutableStateOf(editorJson.encodeToString(editingLevel?.shapes ?: emptyList())) }
     var showShapeDialog by rememberSaveable(draftKey) { mutableStateOf(false) }
     var shapesRemovedNotice by rememberSaveable(draftKey) { mutableStateOf<Int?>(null) }
@@ -183,6 +187,19 @@ fun LevelEditorScreen(
             optionText = { if (it) "Включено" else "Выключено" },
             onSelect = { allowRotation = it }
         )
+        Spacer(Modifier.height(20.dp))
+
+        Text("Штраф за отмену хода (undo)", style = MaterialTheme.typography.labelMedium)
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { undoPenaltyPercent = (undoPenaltyPercent - 5).coerceAtLeast(0) }) {
+                Icon(Icons.Default.Remove, contentDescription = "Меньше")
+            }
+            Text("$undoPenaltyPercent%", style = MaterialTheme.typography.bodyMedium)
+            IconButton(onClick = { undoPenaltyPercent = (undoPenaltyPercent + 5).coerceAtMost(100) }) {
+                Icon(Icons.Default.Add, contentDescription = "Больше")
+            }
+        }
         Spacer(Modifier.height(24.dp))
 
         Text("Фигуры", style = MaterialTheme.typography.labelMedium)
@@ -239,7 +256,8 @@ fun LevelEditorScreen(
                 editingLevel.colorMode != colorMode ||
                 editingLevel.algorithm != algorithm ||
                 editingLevel.shapes != shapes ||
-                editingLevel.allowRotation != allowRotation
+                editingLevel.allowRotation != allowRotation ||
+                editingLevel.undoPenaltyPercent != undoPenaltyPercent
             )
         val hasRecordAtRisk = editingLevel != null && record > 0 && rulesChanged
 
@@ -248,7 +266,7 @@ fun LevelEditorScreen(
                 if (hasRecordAtRisk) {
                     showRecordChoiceDialog = true
                 } else {
-                    onSave(name, boardSize, colorMode, algorithm, shapes, allowRotation, false)
+                    onSave(name, boardSize, colorMode, algorithm, shapes, allowRotation, undoPenaltyPercent, false)
                 }
             },
             enabled = shapes.isNotEmpty() && !unlosable,
@@ -277,12 +295,12 @@ fun LevelEditorScreen(
             onDismiss = { showRecordChoiceDialog = false },
             onOverwrite = {
                 showRecordChoiceDialog = false
-                onSave(name, boardSize, colorMode, algorithm, shapes, allowRotation, false)
+                onSave(name, boardSize, colorMode, algorithm, shapes, allowRotation, undoPenaltyPercent, false)
             },
             onSaveAsCopy = {
                 showRecordChoiceDialog = false
                 val copyName = if (name == editingLevel.name) "$name (копия)" else name
-                onSave(copyName, boardSize, colorMode, algorithm, shapes, allowRotation, true)
+                onSave(copyName, boardSize, colorMode, algorithm, shapes, allowRotation, undoPenaltyPercent, true)
             }
         )
     }

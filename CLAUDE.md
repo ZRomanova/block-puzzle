@@ -28,15 +28,22 @@ making changes.
   or push to Downloads with `adb push app-debug.apk /sdcard/Download/BlockPuzzle.apk`.
   **Gotcha:** Git Bash/MSYS auto-converts `/sdcard/...`-style destination paths
   into Windows paths, breaking `adb push`. Prefix the command with
-  `MSYS_NO_PATHCONV=1` to stop that.
+  `MSYS_NO_PATHCONV=1` to stop that. The same prefix is needed for
+  `adb shell screencap` + `adb pull` of the result, for the same reason.
+- Launching the app from a shell: the launcher activity is
+  `com.blockpuzzle.rotate/.ui.MainActivity` — **not** `.../.MainActivity`.
+  `MainActivity` lives in the `ui` package, so the shorthand component name
+  needs that segment (`adb shell am start -n com.blockpuzzle.rotate/.ui.MainActivity`);
+  omitting it fails with "Activity class ... does not exist."
 - Last known-good state (2026-08-11, after the level constructor rewrite and
-  several same-day follow-up rounds, most recently reverting mirroring — see
+  several same-day follow-up rounds — most recently an undo-penalty feature,
+  a game-top-bar overflow fix, and before that reverting mirroring — see
   Notable product decisions — and a paused-game bugfix): `assembleDebug` and
   `testDebugUnitTest` both green. Latest APK installed via `adb install -r`,
   pushed to `/sdcard/Download/BlockPuzzle.apk`, and copied to the desktop —
-  all from the current round. See Status below for exactly which changes
-  have vs. haven't been visually re-confirmed by the user on-device (most
-  haven't).
+  all from the current round. Both of this round's changes were visually
+  re-confirmed by the user on-device (see Status below); most earlier rounds'
+  changes still haven't been.
 
 ## Architecture
 
@@ -53,6 +60,10 @@ making changes.
     `allowRotation` (added 2026-08-11) defaults `true` so old persisted
     levels decode with the behavior they always had. There is deliberately
     **no `allowMirror` setting** — see Notable product decisions for why.
+    `undoPenaltyPercent` (added 2026-08-11) defaults to
+    `ScoringConfig.DEFAULT_UNDO_PENALTY_PERCENT` (20) for the same
+    old-levels-decode-unchanged reason; see `GameEngine.undo()` above and
+    Notable product decisions below.
   - `PieceShape(id, baseCells)` replaced the old closed `ShapeType` enum —
     it's an open value type now so the constructor's hand-drawn shapes and
     the 15 built-in ones (`PieceShape.LEGACY_CATALOG`) are the same type.
@@ -133,6 +144,18 @@ making changes.
     than relying only on the UI hiding the rotate button (`TraySlot`'s
     `showRotateButton` param, wired from `uiState.level.allowRotation` in
     `GameScreen`).
+  - `GameEngine.undo()` (added 2026-08-11) deducts
+    `LevelDefinition.undoPenaltyPercent` percent — floored, via
+    `ScoringConfig.undoPenalty(scoreBeforeUndo, undoPenaltyPercent)` — from
+    the score, so retrying a placement isn't free. The percent is applied to
+    the score **at the moment undo is pressed** (i.e. `state.score`, the
+    higher post-move score), not the destination state's own (lower,
+    pre-move) score — the two differ whenever the undone move scored
+    anything, so this is a real deduction on top of losing the move's
+    points, not just "restore the old score." The result is clamped with
+    `.coerceAtLeast(0)`, so the score can never go negative. See Notable
+    product decisions for why this shape (percent-of-current-score, per-level
+    configurable, no separate undo-count cap) was chosen.
   - `PieceColor` enum currently has **6** colors (RED, ORANGE, YELLOW, GREEN,
     BLUE, PURPLE) — deliberately cut down from an original 12 because too
     many close hues made monochrome-line color-bonus play impractical.
@@ -189,7 +212,10 @@ making changes.
   - `LevelEditorScreen` is one scrollable screen, no wizard: name → board
     size (5/6/7/8, generalized `ToggleButton`/`LabeledToggleRow` from
     `ui/components/ToggleButton.kt`) → color mode → algorithm → **вращение**
-    (`LabeledToggleRow<Boolean>`, "Включено"/"Выключено") → shape list
+    (`LabeledToggleRow<Boolean>`, "Включено"/"Выключено") → **штраф за отмену
+    хода (undo)** (added 2026-08-11: a `−`/`+` stepper, step 5, range 0–100,
+    reusing the same `IconButton` row pattern as the shape weight steppers
+    further down, editing `undoPenaltyPercent`) → shape list
     (weight steppers shown only for Случайный) → "Добавить фигуру" opens a
     tap-grid `Dialog` (`Trunc(boardSize*0.8)` square, `BoxWithConstraints`-sized
     to always span the dialog's full width — cell size scales to fit, not a
@@ -205,8 +231,9 @@ making changes.
     domino/even-board case. The shape-drawing dialog's duplicate-shape error
     message says "с учётом поворота" — rotation-only, no mirror mention.
     Saving with any *rule* field changed (board size/color
-    mode/algorithm/shapes/weights/вращение) resets that level's record via
-    `GameViewModel.saveLevel`'s diff — renaming alone does not. **Unless the
+    mode/algorithm/shapes/weights/вращение/undo-penalty percent) resets that
+    level's record via `GameViewModel.saveLevel`'s diff — renaming alone
+    does not. **Unless the
     edited level currently has a nonzero record**, in which case pressing
     Save opens `RecordAtRiskDialog` offering a choice: overwrite in place
     (resets the record, old one-path behavior) or "save as a copy"
@@ -218,9 +245,21 @@ making changes.
     entirely and saves in place exactly as before.
   - `LevelDefinition.rulesSummary()` (`ui/components/LevelLabels.kt`) builds
     the "Однотонный · Случайный · 6×6"-style one-liner shown on level rows,
-    the game top bar, and game-over — it only appends "· без вращения" when
-    a level actually deviates from the default (enabled), to avoid
+    the game top bar, and game-over — it only appends "· без вращения" (or,
+    added 2026-08-11, "· undo -X%"/"· undo бесплатно") when a level actually
+    deviates from its default (rotation enabled / 20% undo penalty), to avoid
     cluttering every row with a badge nobody needs to see on the common case.
+  - **Game top bar overflow fix** (2026-08-11): `GameTopBar` in
+    `GameScreen.kt` lays out the home icon, `rulesSummary()` text, and undo
+    icon in one `Arrangement.SpaceBetween` `Row`. On a level whose summary
+    is long enough to include the "· без вращения" suffix (e.g. "Цветной
+    хитрец 6×6"), the text used to be wide enough to push the undo icon off
+    the edge of the screen entirely. Fixed by giving the `Text` itself
+    `Modifier.weight(1f)` (so it's now the only flexible element between the
+    two fixed-size icons) plus `maxLines = 2` and
+    `overflow = TextOverflow.Ellipsis` so a still-too-long summary wraps
+    instead of overflowing. Reproduced and visually re-confirmed fixed on
+    "Цветной хитрец 6×6" specifically, per the original bug report.
   - `GameScreen`'s top bar shows **score and record side by side** (labeled
     "счёт" / "рекорд"), passed in as `record: Int` from
     `MainActivity`'s `records[state.level.tag]`. The displayed record is
@@ -403,6 +442,38 @@ making changes.
   (stacked / side-by-side / progress bar / flanking cards) — she picked
   side-by-side. If asked to change this layout again, it's worth offering
   options the same way rather than just picking one.
+- **Undo now costs points, per-level configurable** (added 2026-08-11,
+  `LevelDefinition.undoPenaltyPercent`): before this, `GameEngine.undo()`
+  was a free, unlimited retry — press undo, try a different placement, no
+  cost — which the user flagged as an easy way to cheat. Design was decided
+  via Q&A rather than guessed:
+  - **Proportional to the current score at the moment undo is pressed**, not
+    a flat constant and not proportional to the last move's own points —
+    she picked this explicitly over the flat-penalty and
+    proportional-to-last-move alternatives that were offered. Concretely,
+    the deduction is `undoPenaltyPercent`% of `state.score` (the score
+    *before* undoing, i.e. after the move being undone), subtracted from
+    the destination state's own (lower) score — so undoing a move that
+    scored points costs strictly more than just losing those points would.
+    See `GameEngine.undo()`'s doc comment for the exact arithmetic.
+  - **Clamped at 0** — she chose this over letting the score go negative.
+  - **No separate cap on undo count** — the percentage penalty alone is the
+    deterrent; she explicitly declined a "max N undos per game" limit when
+    offered as an option.
+  - **Per-level, not a single global constant** — her own follow-up ask,
+    after initially being offered flat percent choices (10/20/25%): "add it
+    as a level setting" instead. This is why it's
+    `LevelDefinition.undoPenaltyPercent`, not a plain `ScoringConfig`
+    constant, and why it has a `LevelEditorScreen` stepper and participates
+    in the `rulesChanged`/record-reset-or-save-as-copy flow like every other
+    rule field.
+  - **Default 20%, editable in steps of 5, range 0–100** — also decided via
+    Q&A; 0% is an explicitly valid "no penalty" choice for a level author
+    who wants free undos on a specific level, not a special-cased "off"
+    state.
+  Don't change this shape (e.g. switch to flat-penalty, add an undo-count
+  cap, or move it back to a global constant) without asking again — each of
+  those was a real alternative the user considered and declined.
 
 ## Status as of last session (2026-08-11)
 
@@ -457,17 +528,35 @@ having a distinct key), `ShapeConnectivityTest`, `LevelDefinitionTest` for
 `isUnlosable` (single-cell, domino/even-board, domino-needs-rotation),
 `EasyPieceGeneratorTest`/`HardModePieceSelectorTest` (weighted pool, varied
 starting rotation when `allowRotation` is false), `GameEngineTest`
-(including the rotate-disabled no-op guard), `BoardTest`. No dedicated tests
-exist for the `ui`/`data` layers (project convention — see Verification
-notes in prior sessions). The user visually confirmed the constructor works
-("Проверила, пока всё хорошо") after the *first* round of constructor work;
-none of the many follow-up rounds since (including this one) have been
-visually re-confirmed by her yet as of this write-up — worth an actual
-walkthrough before assuming the UI/UX details are all correct, only the
-domain logic underneath has real test coverage. The phone was reachable
+(including the rotate-disabled no-op guard and, as of this round, the
+undo-penalty tests below), `BoardTest`. No dedicated tests exist for the
+`ui`/`data` layers (project convention — see Verification notes in prior
+sessions). The user visually confirmed the constructor works ("Проверила,
+пока всё хорошо") after the *first* round of constructor work; none of the
+many follow-up rounds between then and this one were visually re-confirmed
+by her — this round is the exception, see below. The phone was reachable
 throughout this round — latest APK installed via `adb install -r`, pushed
 to `/sdcard/Download/BlockPuzzle.apk`, and copied to the desktop, all from
 *this* round's build.
+
+**This round** (same day, two independent changes): (1) the undo-penalty
+feature described above under Notable product decisions —
+`LevelDefinition.undoPenaltyPercent`, `GameEngine.undo()`'s deduction logic,
+the `LevelEditorScreen` stepper, and the `rulesSummary()`/`rulesChanged`
+plumbing, with three new `GameEngineTest` cases (proportional deduction,
+clamp-at-zero, 0%-means-no-penalty); (2) the `GameTopBar` overflow fix
+described above. Both were visually re-confirmed on-device by the user this
+round — screenshotted via `adb shell screencap` after she unlocked the
+phone (it locks/sleeps aggressively, so a couple of screencap attempts
+during this round came back solid black before that): the top bar on
+"Цветной хитрец 6×6" now wraps its two-line rules summary cleanly with both
+icons fully visible at the edges, and the new undo-penalty stepper in that
+level's editor renders correctly showing its 20% default. Programmatic
+drag-and-drop placement via `adb shell input swipe` did not register in
+Compose's `detectDragGestures` (single linear swipes don't produce enough
+intermediate move events) — that's an automation limitation, not verified
+game behavior, so the actual point deduction on a real undo was confirmed
+via the new unit tests rather than an on-device play-through.
 
 Google Play publishing was explicitly **paused** by the user 2026-08-11 (she
 said she changed her mind about it "for now") in favor of this feature —

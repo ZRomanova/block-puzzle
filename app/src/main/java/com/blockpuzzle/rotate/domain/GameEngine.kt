@@ -42,9 +42,15 @@ class GameEngine(
 
     fun canUndo(): Boolean = history.isNotEmpty()
 
+    /**
+     * Reverts to the prior [GameState] and additionally deducts [LevelDefinition.undoPenaltyPercent]
+     * percent of the score at the moment undo was pressed (not the restored state's own score) —
+     * see [ScoringConfig.undoPenalty]. Never lets the score drop below 0.
+     */
     fun undo(): GameState? {
         val previous = history.removeLastOrNull() ?: return null
-        state = previous
+        val penalty = ScoringConfig.undoPenalty(state.score, level.undoPenaltyPercent)
+        state = previous.copy(score = (previous.score - penalty).coerceAtLeast(0))
         return state
     }
 

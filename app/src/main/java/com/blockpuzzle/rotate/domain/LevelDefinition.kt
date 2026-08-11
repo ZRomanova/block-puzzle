@@ -24,6 +24,15 @@ import kotlinx.serialization.Serializable
  * flip button in-game — the user found that confusing/annoying in practice and asked for it to
  * be fully reverted (see `ShapeSymmetry`'s doc comment). A shape's mirror image is now just a
  * second, independent shape the player draws separately if they want it.
+ *
+ * [undoPenaltyPercent] (added 2026-08-11) — percent of the current score deducted (floored,
+ * clamped so the score never goes below 0) each time the player presses undo, so retrying a
+ * placement isn't free. Defaults to [ScoringConfig.DEFAULT_UNDO_PENALTY_PERCENT] (20), so old
+ * persisted levels that predate this field decode with that value. 0 is a valid, explicit
+ * "no penalty" choice for a level author who wants free undos; there is no separate cap on how
+ * many times undo can be pressed in a game, the percentage is the only deterrent. Applied in
+ * [GameEngine.undo]. Like [allowRotation], changing it on an existing level counts as a rule
+ * change for [GameViewModel.saveLevel]'s record-reset diff.
  */
 @Serializable
 data class LevelDefinition(
@@ -33,7 +42,8 @@ data class LevelDefinition(
     val colorMode: ScoringMode,
     val algorithm: GameMode,
     val shapes: List<LevelShape>,
-    val allowRotation: Boolean = true
+    val allowRotation: Boolean = true,
+    val undoPenaltyPercent: Int = ScoringConfig.DEFAULT_UNDO_PENALTY_PERCENT
 ) {
     companion object {
         val ALLOWED_BOARD_SIZES = 5..8

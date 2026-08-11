@@ -22,7 +22,8 @@ private fun testLevel(
     boardSize: Int = 8,
     colorMode: ScoringMode = ScoringMode.CLASSIC,
     algorithm: GameMode = GameMode.EASY,
-    allowRotation: Boolean = true
+    allowRotation: Boolean = true,
+    undoPenaltyPercent: Int = ScoringConfig.DEFAULT_UNDO_PENALTY_PERCENT
 ) = LevelDefinition(
     tag = "test",
     name = "test",
@@ -30,7 +31,8 @@ private fun testLevel(
     colorMode = colorMode,
     algorithm = algorithm,
     shapes = PieceShape.LEGACY_CATALOG.map { LevelShape(it) },
-    allowRotation = allowRotation
+    allowRotation = allowRotation,
+    undoPenaltyPercent = undoPenaltyPercent
 )
 
 class GameEngineTest {
@@ -143,6 +145,44 @@ class GameEngineTest {
         val restored = engine.undo()
         assertEquals(initial, restored)
         assertFalse(engine.canUndo())
+    }
+
+    @Test
+    fun `undo deducts a percentage of the score at the moment undo is pressed`() {
+        val engine = GameEngine(testLevel(undoPenaltyPercent = 50), FixedPieceGenerator(listOf(PieceShape.SINGLE)))
+        engine.startNewGame()
+        engine.place(0, 0, 0) // score 0 -> 1
+        engine.place(1, 0, 1) // score 1 -> 2
+        engine.place(2, 0, 2) // score 2 -> 3, batch refills here
+
+        // Penalty = 50% of 3 (the score right before undo) = 1, taken off the destination
+        // state's own score of 2, landing on 1 — not simply 50% of the destination score.
+        val restored = engine.undo()
+        assertEquals(1, restored?.score)
+        assertEquals(1, engine.state.score)
+    }
+
+    @Test
+    fun `undo penalty never drops the score below zero`() {
+        val engine = GameEngine(testLevel(undoPenaltyPercent = 100), FixedPieceGenerator(listOf(PieceShape.SINGLE)))
+        engine.startNewGame()
+        engine.place(0, 0, 0) // score 0 -> 1
+        engine.place(1, 0, 1) // score 1 -> 2
+
+        // Penalty = 100% of 2 = 2, which would take the destination score of 1 negative.
+        val restored = engine.undo()
+        assertEquals(0, restored?.score)
+    }
+
+    @Test
+    fun `a 0 percent undo penalty leaves the restored score untouched`() {
+        val engine = GameEngine(testLevel(undoPenaltyPercent = 0), FixedPieceGenerator(listOf(PieceShape.SINGLE)))
+        engine.startNewGame()
+        engine.place(0, 0, 0) // score 0 -> 1
+        engine.place(1, 0, 1) // score 1 -> 2
+
+        val restored = engine.undo()
+        assertEquals(1, restored?.score)
     }
 
     @Test

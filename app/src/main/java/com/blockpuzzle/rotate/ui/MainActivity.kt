@@ -102,10 +102,10 @@ private fun BlockPuzzleApp(viewModel: GameViewModel = viewModel()) {
                         pausedScores[targetScreen.editingTag] ?: 0
                     ),
                     onBack = viewModel::goToConstructor,
-                    onSave = { name, boardSize, colorMode, algorithm, shapes, allowRotation, saveAsCopy ->
+                    onSave = { name, boardSize, colorMode, algorithm, shapes, allowRotation, undoPenaltyPercent, saveAsCopy ->
                         viewModel.saveLevel(
                             targetScreen.editingTag, name, boardSize, colorMode, algorithm, shapes,
-                            allowRotation, saveAsCopy
+                            allowRotation, undoPenaltyPercent, saveAsCopy
                         )
                     }
                 )

@@ -245,7 +245,13 @@ private fun GameTopBar(
             }
             Text(
                 text = level.rulesSummary(),
-                style = MaterialTheme.typography.labelMedium
+                style = MaterialTheme.typography.labelMedium,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 4.dp)
             )
             IconButton(onClick = onUndo, enabled = canUndo) {
                 Icon(
