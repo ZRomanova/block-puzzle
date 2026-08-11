@@ -115,6 +115,10 @@ fun TraySlot(
 
         Spacer(Modifier.height(4.dp))
 
+        // No filler spacer for an omitted button: the Row's width should shrink to just
+        // whichever button(s) are actually shown, so a single remaining button ends up
+        // centered under the piece — not offset to one side by an invisible placeholder for
+        // the other one.
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (showRotateButton) {
                 IconButton(
@@ -128,9 +132,6 @@ fun TraySlot(
                         tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (piece != null) 0.7f else 0.2f)
                     )
                 }
-            } else {
-                // Keeps all tray slots the same height/width as siblings that do show the button.
-                Spacer(Modifier.size(40.dp))
             }
 
             if (showMirrorButton) {
