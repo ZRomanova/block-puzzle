@@ -3,15 +3,18 @@ package com.blockpuzzle.rotate.domain
 /** Случайный (random) algorithm: pieces are chosen at random, weighted by each shape's configured weight, oblivious to board state. */
 class EasyPieceGenerator(
     private val shapePool: List<LevelShape> = PieceShape.LEGACY_CATALOG.map { LevelShape(it) },
-    private val random: kotlin.random.Random = kotlin.random.Random.Default
+    private val random: kotlin.random.Random = kotlin.random.Random.Default,
+    private val allowRotation: Boolean = true,
+    private val allowMirror: Boolean = true
 ) : PieceGenerator {
 
     override fun nextPiece(board: Board, remainingTrayPieces: List<Piece>): Piece {
         val chosen = pickWeighted(shapePool, random)
         return Piece(
             id = "p-${random.nextLong()}",
-            shape = PieceShape(chosen.shape.id, chosen.resolveCells(random)),
-            color = PieceColor.entries[random.nextInt(PieceColor.entries.size)]
+            shape = PieceShape(chosen.shape.id, chosen.resolveCells(random, allowMirror)),
+            color = PieceColor.entries[random.nextInt(PieceColor.entries.size)],
+            rotationSteps = initialRotationSteps(allowRotation, random)
         )
     }
 

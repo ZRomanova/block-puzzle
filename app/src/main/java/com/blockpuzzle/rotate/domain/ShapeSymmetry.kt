@@ -3,9 +3,15 @@ package com.blockpuzzle.rotate.domain
 /**
  * Shared geometry for piece shapes: normalization, the dihedral group of 8
  * transforms (4 rotations x mirror-or-not), and the canonicalization used to
- * detect that two user-drawn shapes are "the same" — up to whichever of
- * rotation/reflection the level actually lets a player reach in-game (see
- * [LevelDefinition.allowRotation]/[LevelDefinition.allowMirror]).
+ * detect that two user-drawn shapes are "the same" up to rotation/reflection.
+ *
+ * The level editor always treats a shape and any of its 8 dihedral transforms
+ * as one and the same shape when checking for duplicates, **regardless of a
+ * level's [LevelDefinition.allowRotation]/[LevelDefinition.allowMirror]
+ * settings** — kept deliberately simple rather than tracking which specific
+ * transforms a given level's player can actually reach. Those two settings
+ * instead govern spawn-time behavior (see [LevelShape.resolveCells] for
+ * mirroring, [EasyPieceGenerator]/[HardModePieceSelector] for rotation).
  *
  * [Piece] delegates its own rotation here so there is exactly one
  * implementation of "rotate a cell list" in the codebase.
@@ -32,43 +38,26 @@ object ShapeSymmetry {
         return rotations + rotations.map { mirror(it) }
     }
 
-    /** The rotations of [cells] — just itself when [allowRotation] is false. */
-    private fun rotationsOf(cells: List<Coordinate>, allowRotation: Boolean): List<List<Coordinate>> {
-        if (!allowRotation) return listOf(normalize(cells))
-        val rotations = mutableListOf(normalize(cells))
-        repeat(3) { rotations.add(rotate90(rotations.last())) }
-        return rotations
-    }
-
     private fun sortedKey(cells: List<Coordinate>): String =
         cells.sortedWith(compareBy({ it.row }, { it.col })).joinToString(";") { "${it.row},${it.col}" }
 
-    /**
-     * Shape identity up to whichever transforms are actually reachable by a player of this
-     * level: [allowRotation] controls whether the 4 rotations count as "the same shape"
-     * (matches the in-game rotate button), [allowMirror] whether the mirrored orientations do
-     * too. With both false this reduces to plain exact-shape equality. Used at duplicate-shape
-     * detection time in the level editor.
-     */
-    fun canonicalKey(cells: List<Coordinate>, allowRotation: Boolean = true, allowMirror: Boolean = true): String {
-        val rotations = rotationsOf(cells, allowRotation)
-        val transforms = if (allowMirror) rotations + rotations.map { mirror(it) } else rotations
-        return transforms.minOf { sortedKey(it) }
-    }
+    /** Shape identity independent of rotation/reflection: the lexicographically smallest key among all 8 transforms. */
+    fun canonicalKey(cells: List<Coordinate>): String =
+        allTransforms(cells).minOf { sortedKey(it) }
 
     /**
-     * True when [cells]' mirror image is *not* reachable by rotating [cells] alone (when
-     * [allowRotation] is true) — a genuine chiral shape (e.g. the S/Z or L/J tetromino pair).
-     * Achiral shapes (symmetric under reflection, or whose reflection equals one of their own
-     * rotations, like the "corner" triomino) return false.
-     *
-     * With [allowRotation] false, there's no rotation available to close that gap, so only
-     * shapes that are reflection-symmetric in their *exact drawn* orientation (e.g.
-     * `TETROMINO_T`) count as achiral — a shape like the corner triomino, achiral only by
-     * virtue of a rotation, becomes chiral here.
+     * True when [cells]' mirror image is *not* reachable by rotating [cells] alone — a genuine
+     * chiral shape (e.g. the S/Z or L/J tetromino pair). Achiral shapes (symmetric under
+     * reflection, or whose reflection equals one of their own rotations, like the "corner"
+     * triomino) return false.
      */
-    fun isChiral(cells: List<Coordinate>, allowRotation: Boolean = true): Boolean {
-        val rotationOnlyKeys = rotationsOf(cells, allowRotation).map { sortedKey(it) }.toSet()
+    fun isChiral(cells: List<Coordinate>): Boolean {
+        var current = normalize(cells)
+        val rotationOnlyKeys = mutableSetOf(sortedKey(current))
+        repeat(3) {
+            current = rotate90(current)
+            rotationOnlyKeys.add(sortedKey(current))
+        }
         return sortedKey(mirror(cells)) !in rotationOnlyKeys
     }
 }

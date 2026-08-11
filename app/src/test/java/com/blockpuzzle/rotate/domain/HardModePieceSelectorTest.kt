@@ -89,4 +89,35 @@ class HardModePieceSelectorTest {
         val chosen = selector.nextPiece(board, remainingTrayPieces = emptyList())
         assertEquals(PieceShape.SINGLE, chosen.shape)
     }
+
+    @Test
+    fun `when rotation is disallowed, chosen pieces start at a varied rotation`() {
+        val selector = HardModePieceSelector(
+            shapePool = listOf(LevelShape(PieceShape.TETROMINO_L)),
+            candidateSampleSize = 1,
+            minPlayableMoves = 0,
+            allowRotation = false
+        )
+        val board = Board()
+        val seenSteps = mutableSetOf<Int>()
+        repeat(50) {
+            seenSteps.add(selector.nextPiece(board, emptyList()).rotationSteps)
+        }
+        assertTrue("expected more than one distinct starting rotation, got $seenSteps", seenSteps.size > 1)
+    }
+
+    @Test
+    fun `when mirroring is disallowed, a chiral shape never spawns mirrored`() {
+        val selector = HardModePieceSelector(
+            shapePool = listOf(LevelShape.userDrawn(PieceShape.TETROMINO_L)),
+            candidateSampleSize = 1,
+            minPlayableMoves = 0,
+            allowMirror = false
+        )
+        val board = Board()
+        val baseCells = ShapeSymmetry.normalize(PieceShape.TETROMINO_L.baseCells).toSet()
+        repeat(50) {
+            assertEquals(baseCells, selector.nextPiece(board, emptyList()).shape.baseCells.toSet())
+        }
+    }
 }

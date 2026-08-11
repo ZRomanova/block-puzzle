@@ -57,7 +57,7 @@ fun MenuScreen(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "фигуры можно вращать",
+                text = "у каждого уровня свои правила",
                 style = MaterialTheme.typography.bodyMedium
             )
 

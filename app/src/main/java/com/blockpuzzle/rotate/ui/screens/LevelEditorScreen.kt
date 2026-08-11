@@ -273,11 +273,9 @@ fun LevelEditorScreen(
         ShapeDrawDialog(
             gridSize = LevelDefinition.editableGridSize(boardSize),
             existingShapes = shapes,
-            allowRotation = allowRotation,
-            allowMirror = allowMirror,
             onDismiss = { showShapeDialog = false },
             onConfirm = { newShape ->
-                replaceShapes(shapes + LevelShape.userDrawn(newShape, allowRotation = allowRotation, allowMirror = allowMirror))
+                replaceShapes(shapes + LevelShape.userDrawn(newShape))
                 showShapeDialog = false
             }
         )
@@ -392,8 +390,6 @@ private fun ShapeRow(
 private fun ShapeDrawDialog(
     gridSize: Int,
     existingShapes: List<LevelShape>,
-    allowRotation: Boolean,
-    allowMirror: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (PieceShape) -> Unit
 ) {
@@ -461,17 +457,10 @@ private fun ShapeDrawDialog(
                             !ShapeConnectivity.isConnected(cells) -> errorMessage = "Клетки фигуры должны соприкасаться"
                             else -> {
                                 val normalized = ShapeSymmetry.normalize(cells.toList())
-                                val newKey = ShapeSymmetry.canonicalKey(normalized, allowRotation, allowMirror)
-                                val isDuplicate = existingShapes.any {
-                                    ShapeSymmetry.canonicalKey(it.shape.baseCells, allowRotation, allowMirror) == newKey
-                                }
+                                val newKey = ShapeSymmetry.canonicalKey(normalized)
+                                val isDuplicate = existingShapes.any { ShapeSymmetry.canonicalKey(it.shape.baseCells) == newKey }
                                 if (isDuplicate) {
-                                    errorMessage = when {
-                                        allowRotation && allowMirror -> "Такая фигура уже есть (с учётом поворота и отражения)"
-                                        allowRotation -> "Такая фигура уже есть (с учётом поворота)"
-                                        allowMirror -> "Такая фигура уже есть (с учётом отражения)"
-                                        else -> "Такая фигура уже есть"
-                                    }
+                                    errorMessage = "Такая фигура уже есть (с учётом поворота и отражения)"
                                 } else {
                                     onConfirm(PieceShape(PieceShape.newCustomId(), normalized))
                                 }

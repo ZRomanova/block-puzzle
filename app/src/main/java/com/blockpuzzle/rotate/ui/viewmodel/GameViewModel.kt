@@ -75,9 +75,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         updateResumable()
 
         val generator = if (level.algorithm == GameMode.EASY) {
-            EasyPieceGenerator(level.shapes)
+            EasyPieceGenerator(level.shapes, allowRotation = level.allowRotation, allowMirror = level.allowMirror)
         } else {
-            HardModePieceSelector(level.shapes)
+            HardModePieceSelector(level.shapes, allowRotation = level.allowRotation, allowMirror = level.allowMirror)
         }
         val colorProvider = if (level.colorMode == ScoringMode.CLASSIC) {
             { PieceColor.BLUE }

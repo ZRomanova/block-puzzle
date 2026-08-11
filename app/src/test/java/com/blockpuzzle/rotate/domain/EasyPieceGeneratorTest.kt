@@ -46,4 +46,36 @@ class EasyPieceGeneratorTest {
 
         assertEquals(PieceShape.LEGACY_CATALOG.toSet(), seenShapes)
     }
+
+    @Test
+    fun `when rotation is allowed, spawned pieces always start unrotated`() {
+        val generator = EasyPieceGenerator(random = Random(3), allowRotation = true)
+        val board = Board()
+        repeat(50) {
+            assertEquals(0, generator.nextPiece(board, emptyList()).rotationSteps)
+        }
+    }
+
+    @Test
+    fun `when rotation is disallowed, spawned pieces start at a varied rotation`() {
+        val pool = listOf(LevelShape(PieceShape.TETROMINO_L))
+        val generator = EasyPieceGenerator(shapePool = pool, random = Random(3), allowRotation = false)
+        val board = Board()
+        val seenSteps = mutableSetOf<Int>()
+        repeat(50) {
+            seenSteps.add(generator.nextPiece(board, emptyList()).rotationSteps)
+        }
+        assertTrue("expected more than one distinct starting rotation, got $seenSteps", seenSteps.size > 1)
+    }
+
+    @Test
+    fun `when mirroring is disallowed, a chiral shape never spawns mirrored`() {
+        val pool = listOf(LevelShape.userDrawn(PieceShape.TETROMINO_L))
+        val generator = EasyPieceGenerator(shapePool = pool, random = Random(5), allowMirror = false)
+        val board = Board()
+        val baseCells = ShapeSymmetry.normalize(PieceShape.TETROMINO_L.baseCells).toSet()
+        repeat(50) {
+            assertEquals(baseCells, generator.nextPiece(board, emptyList()).shape.baseCells.toSet())
+        }
+    }
 }
