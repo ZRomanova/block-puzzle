@@ -115,6 +115,12 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         publish(e.state, e, lastClear = null)
     }
 
+    fun flip(trayIndex: Int) {
+        val e = activeEngine ?: return
+        e.flip(trayIndex)
+        publish(e.state, e, lastClear = null)
+    }
+
     fun undo() {
         val e = activeEngine ?: return
         val restored = e.undo() ?: return

@@ -115,6 +115,7 @@ private fun BlockPuzzleApp(viewModel: GameViewModel = viewModel()) {
                     onCanPlace = viewModel::canPlace,
                     onLinesPreview = viewModel::linesPreview,
                     onRotate = viewModel::rotate,
+                    onFlip = viewModel::flip,
                     onUndo = viewModel::undo,
                     onExitToMenu = viewModel::exitToLevelList
                 )

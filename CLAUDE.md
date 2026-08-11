@@ -156,6 +156,17 @@ making changes.
     of truth for this rather than relying only on the UI hiding the rotate
     button (`TraySlot`'s `showRotateButton` param, wired from
     `uiState.level.allowRotation` in `GameScreen`).
+  - `GameEngine.flip(trayIndex)` (added 2026-08-11, same day as the button
+    below) is the player-facing counterpart to spawn-time mirroring — a
+    manual "flip this piece left-right" control, guarded by
+    `level.allowMirror` the same way `rotate` is guarded by `allowRotation`.
+    `Piece.flippedHorizontally()` mirrors whatever the piece *currently*
+    looks like on screen (`ShapeSymmetry.mirror(cells)`, not
+    `shape.baseCells`) and resets `rotationSteps` to 0 against that as the
+    new base — deliberately sidesteps reasoning about how mirroring and the
+    existing rotation compose (they don't commute in general); this way
+    "flip" always does exactly what it looks like it does regardless of
+    prior rotates, and pressing it twice is always a no-op overall.
   - `PieceColor` enum currently has **6** colors (RED, ORANGE, YELLOW, GREEN,
     BLUE, PURPLE) — deliberately cut down from an original 12 because too
     many close hues made monochrome-line color-bonus play impractical.
@@ -233,6 +244,14 @@ making changes.
     " (копия)" appended automatically if the user didn't already rename it,
     so the two don't look identical in the list). A record of 0 skips the
     dialog entirely and saves in place exactly as before.
+  - Each row in `LevelEditorScreen`'s shape list shows **two** glyphs side by
+    side (`ShapeRow`'s `showMirroredPreview`, added 2026-08-11) when that
+    shape would actually spawn mirrored in *this* level — i.e.
+    `allowMirror && levelShape.includeMirror` — otherwise just the one
+    drawn form, same as before. Added after the user noticed the default
+    levels' shape lists showed what looked like duplicate, mirror-image
+    rows (see `DefaultLevels.kt`/Notable product decisions) and asked for a
+    clearer way to see "this row can come out either way" instead.
   - `LevelDefinition.rulesSummary()` (`ui/components/LevelLabels.kt`) builds
     the "Однотонный · Случайный · 6×6"-style one-liner shown on level rows,
     the game top bar, and game-over — it only appends "· без вращения" /
@@ -296,16 +315,32 @@ making changes.
   combos as a safety net so nothing from the pre-constructor game was lost.
   The user found 8 similarly-named defaults "easy to get confused by" and
   asked for exactly 3, chosen to demonstrate breadth rather than
-  completeness: a familiar 8×8 classic (`PieceShape.LEGACY_CATALOG`,
+  completeness: "Классика 8×8" (`PieceShape.LEGACY_CATALOG`,
   Однотонный/Случайный, rotation+mirror both on — the original, still-default
-  experience), a 6×6 with rotation turned **off** (Цветной/Хитрый — a
-  meaningfully harder "place it exactly as dealt" variant), and a 5×5 with a
-  small hand-picked, non-uniformly weighted shape pool and mirror turned
-  **off** (so its `TETROMINO_S` always spawns as drawn, never flipped to
-  `Z`). Updated again 2026-08-11 when rotation/mirror became configurable,
-  specifically so the 3 examples would demonstrate the new toggles rather
-  than just sitting at the default. See `DefaultLevels.kt`. Don't go back to
-  seeding one level per mode/scoring/size combination without asking again.
+  experience), "Цветной хитрец 6×6" with rotation turned **off** (Цветной/
+  Хитрый — a meaningfully harder "place it exactly as dealt" variant), and
+  "Мини-вызов 5×5" with a small hand-picked, non-uniformly weighted shape
+  pool and mirror turned **off**. The level *names* briefly had
+  "(без вращения)"/"(без отражения)" suffixes to spell this out, but the
+  user asked for those back out the same day — "перегружает" (redundant
+  clutter): `rulesSummary()` already surfaces the same information via
+  "· без вращения"/"· без отражения" wherever the level is shown, so
+  baking it into the name too was double-stating it. See `DefaultLevels.kt`.
+  Don't go back to seeding one level per mode/scoring/size combination, and
+  don't put rule-summary info back into level *names*, without asking again.
+- **`classicShapePool()` collapses the legacy catalog's explicit mirror
+  pairs before handing shapes to a default level** (added 2026-08-11): the
+  15-shape `PieceShape.LEGACY_CATALOG` deliberately keeps TETROMINO_L/J and
+  TETROMINO_S/Z as four separate entries for historical reasons (see that
+  catalog's own doc comment) — but seeding "Классика 8×8" directly from it
+  put both halves of each pair in the shape list as two separate,
+  visually-mirror-image rows, which the user flagged as looking like a
+  duplication bug rather than a deliberate legacy quirk. `classicShapePool()`
+  (`DefaultLevels.kt`) dedupes by `ShapeSymmetry.canonicalKey` and keeps one
+  `LevelShape.userDrawn` entry per pair (naturally `includeMirror = true`,
+  so it still spawns as either half) — 13 entries instead of 15. This is a
+  fresh-content decision, not a change to `PieceShape.LEGACY_CATALOG` itself
+  or its historical rationale; don't conflate the two.
 - **Rotation and mirror are now per-level configurable, not just fixed
   behavior** (added 2026-08-11): rotation was the game's headline mechanic
   since before the constructor even existed ("Unique mechanic: pieces can be
@@ -351,6 +386,15 @@ making changes.
   *mechanic itself* is unchanged (still on by default, still the same rotate
   button) — only the marketing/framing moved. Don't re-introduce
   rotation-as-the-headline copy without asking again.
+- **Manual flip button, alongside rotate, when a level allows mirroring**
+  (added 2026-08-11): mirroring had been spawn-time-only (a coin flip when
+  the piece is generated) — the user asked for a player-facing control to
+  match, so it's not purely luck-of-the-draw whether you get the chirality
+  you need. `TraySlot` gained a second icon button (`Icons.Default.Flip`)
+  next to rotate, shown whenever `level.allowMirror` is true (independent of
+  whether `showRotateButton` is also true — a level could in principle allow
+  one but not the other). See the `GameEngine.flip`/`Piece.flippedHorizontally`
+  bullets above for the domain side.
 - **A level's shape pool can't be all-single-cell, or (on an even board)
   all-domino** (added 2026-08-11, `LevelDefinition.isUnlosable`, extended
   same day): started from the user's own example ("only a block of 1
@@ -456,25 +500,40 @@ subtitle, Rules screen, this file's own opening line) in favor of "lots of
 configurable settings" — see Notable product decisions for the full
 narrative and reasoning on both changes.
 
+One more round right after: the user tried the app, then asked for three
+fixes — drop the "(без вращения)"/"(без отражения)" name suffixes (redundant
+with `rulesSummary()`), add a manual flip button for symmetry with rotate,
+and fix the default levels' shape lists showing what looked like duplicate
+mirror-image rows. All three shipped: `GameEngine.flip`/`Piece.flippedHorizontally`
++ `TraySlot`'s new flip button, `DefaultLevels.kt`'s `classicShapePool()`
+dedup, and `ShapeRow`'s two-glyph preview for shapes that can actually spawn
+mirrored in the level being edited — see Notable product decisions for all
+three.
+
 `assembleDebug` and `testDebugUnitTest` both green throughout, including
 `ShapeSymmetryTest`/`ShapeConnectivityTest` (chirality edge cases: S/Z, L/J
 mirror pairs; the lone chiral PENTOMINO_L with no legacy mirror — the
 briefly-added `allowRotation`/`allowMirror` parameterized cases were removed
 along with the revert), `LevelDefinitionTest` for `isUnlosable` (single-cell,
 domino/even-board, and the domino-needs-rotation cases, all still valid —
-that reasoning didn't change this round), and new `EasyPieceGeneratorTest`/
+that reasoning didn't change this round), `EasyPieceGeneratorTest`/
 `HardModePieceSelectorTest` cases confirming varied starting rotations when
 `allowRotation` is false and that a chiral shape never spawns mirrored when
-`allowMirror` is false. The user visually confirmed the constructor works
+`allowMirror` is false, a new `PieceTest` for `flippedHorizontally` (chiral
+shapes change, flipping twice returns to the original, rotation resets to 0),
+new `GameEngineTest` cases for `flip`'s no-op-when-disallowed guard, and a
+new `DefaultLevelsTest` asserting `classicShapePool()` has no two entries
+sharing a canonical key and is exactly 13 shapes (15 legacy shapes minus one
+per merged mirror pair). The user visually confirmed the constructor works
 ("Проверила, пока всё хорошо") after the *first* round of constructor work;
 none of the follow-up rounds since (board-size shape validation, full-width
 drawing grid, 3 curated defaults, the unlosable checks, save-as-copy, the
-rotation/mirror toggles, or this simplification-and-reframing round) have
-been visually re-confirmed by her yet as of this write-up — worth an actual
-walkthrough before assuming the UI/UX details are all correct, only the
-domain logic underneath has real test coverage. The phone reconnected before
-the end of this round, though (unlike the previous one) — latest APK is
-installed via `adb install -r`, pushed to `/sdcard/Download/BlockPuzzle.apk`,
+rotation/mirror toggles, the simplification-and-reframing round, or this
+flip-button-and-defaults-cleanup round) have been visually re-confirmed by
+her yet as of this write-up — worth an actual walkthrough before assuming
+the UI/UX details are all correct, only the domain logic underneath has
+real test coverage. The phone was reachable throughout this round — latest
+APK installed via `adb install -r`, pushed to `/sdcard/Download/BlockPuzzle.apk`,
 and copied to the desktop, all from *this* round's build.
 
 **The test phone's app data was cleared 2026-08-11** (`adb shell pm clear

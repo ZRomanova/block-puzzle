@@ -57,6 +57,15 @@ class GameEngine(
         return state
     }
 
+    /** No-op when [LevelDefinition.allowMirror] is false — same single-source-of-truth reasoning as [rotate]. */
+    fun flip(trayIndex: Int): GameState {
+        if (!level.allowMirror) return state
+        val piece = state.tray[trayIndex] ?: return state
+        val newTray = state.tray.toMutableList().also { it[trayIndex] = piece.flippedHorizontally() }
+        state = state.copy(tray = newTray)
+        return state
+    }
+
     /** Attempts to place the piece at [trayIndex] with its top-left cell at (anchorRow, anchorCol). */
     fun place(trayIndex: Int, anchorRow: Int, anchorCol: Int): PlacementResult? {
         if (state.isGameOver) return null

@@ -211,6 +211,7 @@ fun LevelEditorScreen(
                 shapes.forEachIndexed { index, levelShape ->
                     ShapeRow(
                         levelShape = levelShape,
+                        showMirroredPreview = allowMirror && levelShape.includeMirror,
                         percent = if (algorithm == GameMode.EASY && totalWeight > 0) levelShape.weight * 100 / totalWeight else null,
                         onWeightChange = { newWeight ->
                             replaceShapes(shapes.toMutableList().also { it[index] = levelShape.copy(weight = newWeight) })
@@ -340,22 +341,41 @@ private fun RecordAtRiskDialog(
 @Composable
 private fun ShapeRow(
     levelShape: LevelShape,
+    showMirroredPreview: Boolean,
     percent: Int?,
     onWeightChange: (Int) -> Unit,
     onDelete: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            val cellSize = 10.dp
             val previewPiece = remember(levelShape.shape) {
                 Piece(id = "preview", shape = levelShape.shape, color = PieceColor.BLUE)
             }
-            val cellSize = 10.dp
             Box(modifier = Modifier.size(56.dp), contentAlignment = Alignment.Center) {
                 ShapeGlyph(
                     piece = previewPiece,
                     cellSize = cellSize,
                     modifier = Modifier.size(previewPiece.glyphWidth(cellSize), previewPiece.glyphHeight(cellSize))
                 )
+            }
+            // When this shape can actually spawn mirrored in this level, show both variants
+            // side by side — otherwise a shape and its "hidden" mirror twin look identical to
+            // any other single-form entry, which was confusing (see CLAUDE.md).
+            if (showMirroredPreview) {
+                Spacer(Modifier.width(4.dp))
+                Text("/", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
+                Spacer(Modifier.width(4.dp))
+                val mirroredPiece = remember(levelShape.shape) {
+                    Piece(id = "preview-mirror", shape = PieceShape(levelShape.shape.id, ShapeSymmetry.mirror(levelShape.shape.baseCells)), color = PieceColor.BLUE)
+                }
+                Box(modifier = Modifier.size(56.dp), contentAlignment = Alignment.Center) {
+                    ShapeGlyph(
+                        piece = mirroredPiece,
+                        cellSize = cellSize,
+                        modifier = Modifier.size(mirroredPiece.glyphWidth(cellSize), mirroredPiece.glyphHeight(cellSize))
+                    )
+                }
             }
             Spacer(Modifier.width(8.dp))
 

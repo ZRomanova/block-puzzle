@@ -5,6 +5,7 @@ import com.blockpuzzle.rotate.domain.LevelDefinition
 import com.blockpuzzle.rotate.domain.LevelShape
 import com.blockpuzzle.rotate.domain.PieceShape
 import com.blockpuzzle.rotate.domain.ScoringMode
+import com.blockpuzzle.rotate.domain.ShapeSymmetry
 import kotlinx.coroutines.flow.first
 
 /**
@@ -22,14 +23,14 @@ import kotlinx.coroutines.flow.first
 suspend fun seedDefaultLevelsIfNeeded(levelsRepository: LevelsRepository) {
     if (levelsRepository.defaultsSeeded.first()) return
 
-    val classicCatalog = PieceShape.LEGACY_CATALOG.map { LevelShape(it, weight = 1, includeMirror = false) }
+    val classicCatalog = classicShapePool()
     val miniCatalog = listOf(
-        LevelShape(PieceShape.SINGLE, weight = 1),
-        LevelShape(PieceShape.DOMINO, weight = 2),
-        LevelShape(PieceShape.TRIOMINO_L, weight = 2),
-        LevelShape(PieceShape.TETROMINO_O, weight = 1),
-        LevelShape(PieceShape.TETROMINO_T, weight = 1),
-        LevelShape(PieceShape.TETROMINO_S, weight = 1)
+        LevelShape.userDrawn(PieceShape.SINGLE, weight = 1),
+        LevelShape.userDrawn(PieceShape.DOMINO, weight = 2),
+        LevelShape.userDrawn(PieceShape.TRIOMINO_L, weight = 2),
+        LevelShape.userDrawn(PieceShape.TETROMINO_O, weight = 1),
+        LevelShape.userDrawn(PieceShape.TETROMINO_T, weight = 1),
+        LevelShape.userDrawn(PieceShape.TETROMINO_S, weight = 1)
     )
 
     val defaults = listOf(
@@ -47,7 +48,7 @@ suspend fun seedDefaultLevelsIfNeeded(levelsRepository: LevelsRepository) {
         // No rotation: pieces must be placed exactly as dealt — a meaningfully harder, different feel, paired with Хитрый.
         LevelDefinition(
             tag = LevelDefinition.baseTag(ScoringMode.COLOR_BONUS, GameMode.HARD, 6),
-            name = "Цветной хитрец 6×6 (без вращения)",
+            name = "Цветной хитрец 6×6",
             boardSize = 6,
             colorMode = ScoringMode.COLOR_BONUS,
             algorithm = GameMode.HARD,
@@ -58,7 +59,7 @@ suspend fun seedDefaultLevelsIfNeeded(levelsRepository: LevelsRepository) {
         // No mirroring: TETROMINO_S only ever spawns as drawn, never flips to its Z mirror.
         LevelDefinition(
             tag = LevelDefinition.baseTag(ScoringMode.CLASSIC, GameMode.EASY, 5),
-            name = "Мини-вызов 5×5 (без отражения)",
+            name = "Мини-вызов 5×5",
             boardSize = 5,
             colorMode = ScoringMode.CLASSIC,
             algorithm = GameMode.EASY,
@@ -69,4 +70,22 @@ suspend fun seedDefaultLevelsIfNeeded(levelsRepository: LevelsRepository) {
     )
 
     levelsRepository.seedDefaults(defaults)
+}
+
+/**
+ * [PieceShape.LEGACY_CATALOG] deliberately keeps some mirror pairs as separate entries
+ * (TETROMINO_L/J, TETROMINO_S/Z) for historical reasons (see the catalog's own doc comment) —
+ * but seeding both halves of a pair as two separate [LevelShape]s here would show up as two
+ * visually mirror-image rows in the constructor's shape list, which reads as a mistake now that
+ * a shape and its mirror are always meant to be "one shape" (see `ShapeSymmetry`'s doc comment).
+ * This collapses each such pair down to one entry (`LevelShape.userDrawn`, so it naturally gets
+ * `includeMirror = true` and can still spawn as either half) before handing shapes to a fresh
+ * example level.
+ */
+internal fun classicShapePool(): List<LevelShape> {
+    val seenKeys = mutableSetOf<String>()
+    return PieceShape.LEGACY_CATALOG.mapNotNull { shape ->
+        val key = ShapeSymmetry.canonicalKey(shape.baseCells)
+        if (!seenKeys.add(key)) null else LevelShape.userDrawn(shape)
+    }
 }
