@@ -67,3 +67,19 @@ suspend fun seedDefaultLevelsIfNeeded(levelsRepository: LevelsRepository) {
 
     levelsRepository.seedDefaults(defaults)
 }
+
+/**
+ * One-shot migration (2026-08-12): zeroes [LevelDefinition.undoPenaltyPercent] on every level
+ * that already exists at the moment this runs. Added right after the undo-penalty feature
+ * shipped, once the user noticed she could no longer beat records she'd set *before* undo started
+ * costing points — those old records were earned with free undos, so comparing them against a
+ * penalized score isn't a fair contest. This resets the penalty to 0% on her existing levels
+ * (default-seeded and custom alike) so the old records stay reachable; levels created *after* this
+ * migration has run are untouched and keep the normal [ScoringConfig.DEFAULT_UNDO_PENALTY_PERCENT]
+ * (or whatever she picks in the constructor) — she can still opt back into the feature for new
+ * levels. Gated by [LevelsRepository.undoPenaltyMigrated] so it only ever fires once.
+ */
+suspend fun zeroExistingUndoPenaltiesIfNeeded(levelsRepository: LevelsRepository) {
+    if (levelsRepository.undoPenaltyMigrated.first()) return
+    levelsRepository.zeroOutUndoPenalties()
+}

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.blockpuzzle.rotate.data.LevelsRepository
 import com.blockpuzzle.rotate.data.RecordsRepository
 import com.blockpuzzle.rotate.data.seedDefaultLevelsIfNeeded
+import com.blockpuzzle.rotate.data.zeroExistingUndoPenaltiesIfNeeded
 import com.blockpuzzle.rotate.domain.Board
 import com.blockpuzzle.rotate.domain.EasyPieceGenerator
 import com.blockpuzzle.rotate.domain.GameEngine
@@ -35,6 +36,7 @@ data class GameUiState(
     val level: LevelDefinition,
     val isGameOver: Boolean,
     val canUndo: Boolean,
+    val pendingUndoPenalty: Int,
     val lastClear: PlacementResult? = null
 )
 
@@ -79,7 +81,10 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     init {
-        viewModelScope.launch { seedDefaultLevelsIfNeeded(levelsRepository) }
+        viewModelScope.launch {
+            seedDefaultLevelsIfNeeded(levelsRepository)
+            zeroExistingUndoPenaltiesIfNeeded(levelsRepository)
+        }
     }
 
     /** Starts a fresh game for [level], discarding any paused game previously left for it. */
@@ -281,6 +286,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             level = state.level,
             isGameOver = state.isGameOver,
             canUndo = e.canUndo(),
+            pendingUndoPenalty = e.pendingUndoPenalty(),
             lastClear = lastClear
         )
     }

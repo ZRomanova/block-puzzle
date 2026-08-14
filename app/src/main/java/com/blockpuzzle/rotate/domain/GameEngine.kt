@@ -42,6 +42,10 @@ class GameEngine(
 
     fun canUndo(): Boolean = history.isNotEmpty()
 
+    /** Points an actual [undo] call would deduct right now, without performing it — 0 when [canUndo] is false. */
+    fun pendingUndoPenalty(): Int =
+        if (canUndo()) ScoringConfig.undoPenalty(state.score, level.undoPenaltyPercent) else 0
+
     /**
      * Reverts to the prior [GameState] and additionally deducts [LevelDefinition.undoPenaltyPercent]
      * percent of the score at the moment undo was pressed (not the restored state's own score) —

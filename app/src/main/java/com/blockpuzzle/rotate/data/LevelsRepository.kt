@@ -25,10 +25,14 @@ class LevelsRepository(private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
     private val levelsKey = stringPreferencesKey("levels_json")
     private val defaultsSeededKey = booleanPreferencesKey("defaults_seeded")
+    private val undoPenaltyMigratedKey = booleanPreferencesKey("undo_penalty_zeroed_v1")
 
     val levels: Flow<List<LevelDefinition>> = context.levelsDataStore.data.map { prefs -> decode(prefs[levelsKey]) }
 
     val defaultsSeeded: Flow<Boolean> = context.levelsDataStore.data.map { prefs -> prefs[defaultsSeededKey] ?: false }
+
+    val undoPenaltyMigrated: Flow<Boolean> =
+        context.levelsDataStore.data.map { prefs -> prefs[undoPenaltyMigratedKey] ?: false }
 
     private fun decode(raw: String?): List<LevelDefinition> =
         if (raw.isNullOrBlank()) emptyList() else json.decodeFromString<List<LevelDefinition>>(raw)
@@ -55,6 +59,22 @@ class LevelsRepository(private val context: Context) {
         context.levelsDataStore.edit { prefs ->
             prefs[levelsKey] = json.encodeToString(initialLevels)
             prefs[defaultsSeededKey] = true
+        }
+    }
+
+    /**
+     * One-shot: sets [LevelDefinition.undoPenaltyPercent] to 0 on every level currently
+     * persisted, and marks the migration done so it never runs again. Used only by
+     * [com.blockpuzzle.rotate.data.zeroExistingUndoPenaltiesIfNeeded] to retroactively remove the
+     * undo penalty from levels/records that predate the feature — a level created *after* this
+     * runs is unaffected and keeps whatever [LevelDefinition.undoPenaltyPercent] the constructor
+     * gives it.
+     */
+    suspend fun zeroOutUndoPenalties() {
+        context.levelsDataStore.edit { prefs ->
+            val current = decode(prefs[levelsKey]).map { it.copy(undoPenaltyPercent = 0) }
+            prefs[levelsKey] = json.encodeToString(current)
+            prefs[undoPenaltyMigratedKey] = true
         }
     }
 }

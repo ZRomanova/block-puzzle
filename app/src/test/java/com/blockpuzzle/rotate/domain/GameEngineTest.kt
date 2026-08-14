@@ -186,6 +186,31 @@ class GameEngineTest {
     }
 
     @Test
+    fun `pendingUndoPenalty previews the deduction without performing the undo`() {
+        val engine = GameEngine(testLevel(undoPenaltyPercent = 50), FixedPieceGenerator(listOf(PieceShape.SINGLE)))
+        engine.startNewGame()
+
+        assertEquals(0, engine.pendingUndoPenalty()) // nothing to undo yet
+
+        engine.place(0, 0, 0) // score 0 -> 1
+        engine.place(1, 0, 1) // score 1 -> 2
+
+        // 50% of the current score (2) = 1, matching what `undo()` would actually deduct.
+        assertEquals(1, engine.pendingUndoPenalty())
+        assertEquals(2, engine.state.score) // preview must not mutate state
+        assertTrue(engine.canUndo())
+    }
+
+    @Test
+    fun `pendingUndoPenalty is 0 when the level has no undo penalty configured`() {
+        val engine = GameEngine(testLevel(undoPenaltyPercent = 0), FixedPieceGenerator(listOf(PieceShape.SINGLE)))
+        engine.startNewGame()
+        engine.place(0, 0, 0)
+
+        assertEquals(0, engine.pendingUndoPenalty())
+    }
+
+    @Test
     fun `game over is detected when no tray piece fits`() {
         // Fill the board leaving only isolated single-cell gaps (diagonal), then hand
         // out a domino, which cannot fit anywhere.

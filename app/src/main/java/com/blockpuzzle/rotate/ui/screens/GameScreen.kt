@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -72,6 +74,7 @@ fun GameScreen(
     var boardRootOrigin by remember { mutableStateOf(Offset.Zero) }
     var overlayRootOrigin by remember { mutableStateOf(Offset.Zero) }
     var dragState by remember { mutableStateOf<DragState?>(null) }
+    var showUndoConfirm by remember { mutableStateOf(false) }
 
     val cellSizePx = with(androidx.compose.ui.platform.LocalDensity.current) { cellSize.toPx() }
 
@@ -154,7 +157,9 @@ fun GameScreen(
                 record = record,
                 level = uiState.level,
                 canUndo = uiState.canUndo,
-                onUndo = onUndo,
+                onUndoClick = {
+                    if (uiState.pendingUndoPenalty > 0) showUndoConfirm = true else onUndo()
+                },
                 onExitToMenu = onExitToMenu
             )
 
@@ -222,6 +227,23 @@ fun GameScreen(
                 )
             }
         }
+
+        if (showUndoConfirm) {
+            AlertDialog(
+                onDismissRequest = { showUndoConfirm = false },
+                title = { Text("Отменить ход?") },
+                text = { Text("Вы потеряете ${uiState.pendingUndoPenalty} очков за отмену хода.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showUndoConfirm = false
+                        onUndo()
+                    }) { Text("Отменить ход") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showUndoConfirm = false }) { Text("Не отменять") }
+                }
+            )
+        }
     }
 }
 
@@ -231,7 +253,7 @@ private fun GameTopBar(
     record: Int,
     level: LevelDefinition,
     canUndo: Boolean,
-    onUndo: () -> Unit,
+    onUndoClick: () -> Unit,
     onExitToMenu: () -> Unit
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
@@ -253,7 +275,7 @@ private fun GameTopBar(
                     .weight(1f)
                     .padding(horizontal = 4.dp)
             )
-            IconButton(onClick = onUndo, enabled = canUndo) {
+            IconButton(onClick = onUndoClick, enabled = canUndo) {
                 Icon(
                     Icons.AutoMirrored.Filled.Undo,
                     contentDescription = "Отменить ход",
