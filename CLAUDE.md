@@ -35,15 +35,13 @@ making changes.
   `MainActivity` lives in the `ui` package, so the shorthand component name
   needs that segment (`adb shell am start -n com.blockpuzzle.rotate/.ui.MainActivity`);
   omitting it fails with "Activity class ... does not exist."
-- Last known-good state (2026-08-11, after the level constructor rewrite and
-  several same-day follow-up rounds — most recently an undo-penalty feature,
-  a game-top-bar overflow fix, and before that reverting mirroring — see
-  Notable product decisions — and a paused-game bugfix): `assembleDebug` and
-  `testDebugUnitTest` both green. Latest APK installed via `adb install -r`,
-  pushed to `/sdcard/Download/BlockPuzzle.apk`, and copied to the desktop —
-  all from the current round. Both of this round's changes were visually
-  re-confirmed by the user on-device (see Status below); most earlier rounds'
-  changes still haven't been.
+- Last known-good state (2026-08-14, a small level-editor fix on top of the
+  2026-08-12 undo-penalty/migration round — see Status below):
+  `assembleDebug` and `testDebugUnitTest` both green. Latest APK installed
+  via `adb install -r` and visually re-confirmed on-device this round (see
+  Status below). The "Мини-вызов (копия)" leftover test level noted in the
+  previous round's entry here is gone — already deleted by the time this
+  round started, no action was needed.
 
 ## Architecture
 
@@ -156,6 +154,13 @@ making changes.
     `.coerceAtLeast(0)`, so the score can never go negative. See Notable
     product decisions for why this shape (percent-of-current-score, per-level
     configurable, no separate undo-count cap) was chosen.
+  - `GameEngine.pendingUndoPenalty()` (added 2026-08-12) returns what an
+    actual `undo()` call would deduct right now — the same
+    `ScoringConfig.undoPenalty(state.score, level.undoPenaltyPercent)` call,
+    just without mutating `state` — or `0` when `canUndo()` is false. Exists
+    purely so the UI can show the exact point cost *before* the player
+    commits to undoing; see `GameUiState.pendingUndoPenalty` and
+    `GameScreen`'s confirmation dialog below.
   - `PieceColor` enum currently has **6** colors (RED, ORANGE, YELLOW, GREEN,
     BLUE, PURPLE) — deliberately cut down from an original 12 because too
     many close hues made monochrome-line color-bonus play impractical.
@@ -165,7 +170,11 @@ making changes.
     removed fields like the old `allowMirror`/`includeMirror` in
     already-persisted levels just get dropped harmlessly on decode) in a
     `levels` DataStore. `save`/`delete` decode-mutate-encode inside `edit {}`
-    (transactional).
+    (transactional). `zeroOutUndoPenalties()` (added 2026-08-12) is the same
+    one-shot-migration shape as `seedDefaults` — decode-map-encode inside one
+    `edit {}`, setting `undoPenaltyPercent = 0` on every currently-persisted
+    level and flipping a `undo_penalty_zeroed_v1` boolean flag
+    (`undoPenaltyMigrated` flow) so it never runs twice.
   - `RecordsRepository` — one high score per level **tag** (plain `String`
     now, not `GameVariant`).
   - `DefaultLevels.kt` (`seedDefaultLevelsIfNeeded`) — one-shot, gated by
@@ -174,13 +183,18 @@ making changes.
     that many similarly-named defaults was confusing to pick from, see
     Notable product decisions). Kept in its own file, isolated from both
     repositories, so it's easy to find/replace again later.
+    `zeroExistingUndoPenaltiesIfNeeded` (added 2026-08-12) lives in the same
+    file — gated by `LevelsRepository.undoPenaltyMigrated`, calls
+    `zeroOutUndoPenalties()` — see Notable product decisions for why this
+    migration exists.
   - (No `SettingsRepository` anymore — the monotone-color picker and Settings
     screen were removed 2026-08-10; see Notable product decisions.)
 - **ui/** — Compose, MVVM. `GameViewModel` holds one `activeEngine` plus a
   `pausedEngines: Map<String /* level tag */, GameEngine>` so **any number of
   levels can each have their own paused/unfinished game simultaneously**
-  (exposed as `resumableLevelTags`). Runs `seedDefaultLevelsIfNeeded` once
-  from `init`. Screens: `Menu` (just 2 buttons: "Играть" → `LevelList`,
+  (exposed as `resumableLevelTags`). Runs `seedDefaultLevelsIfNeeded` then
+  `zeroExistingUndoPenaltiesIfNeeded` once from `init`, in that order.
+  Screens: `Menu` (just 2 buttons: "Играть" → `LevelList`,
   "Конструктор" → `Constructor`, plus a "?" icon top-right → `Rules`),
   `Rules` (static plain-language walkthrough for a new player, see
   `RulesScreen.kt`), `LevelList` (pick a level, tap resumes if paused else
@@ -243,6 +257,17 @@ making changes.
     appended automatically if the user didn't already rename it, so the two
     don't look identical in the list). A record of 0 skips the dialog
     entirely and saves in place exactly as before.
+  - The name `OutlinedTextField` at the top of `LevelEditorScreen` is
+    `singleLine = true` with `keyboardOptions = KeyboardOptions(imeAction =
+    ImeAction.Done)` and a `keyboardActions` `onDone` that clears focus
+    (`LocalFocusManager`) and hides the IME (`LocalSoftwareKeyboardController`)
+    (added 2026-08-14) — a long level name used to wrap onto a second line
+    inside the field instead of scrolling horizontally; the user asked for
+    wrapping to be disabled and for the keyboard's Enter/Done key to just
+    close the keyboard instead. Visually confirmed on-device: typing a long
+    name keeps the field one line (text scrolls, doesn't wrap) and pressing
+    the keyboard's Enter key dismisses the keyboard without inserting a
+    newline.
   - `LevelDefinition.rulesSummary()` (`ui/components/LevelLabels.kt`) builds
     the "Однотонный · Случайный · 6×6"-style one-liner shown on level rows,
     the game top bar, and game-over — it only appends "· без вращения" (or,
@@ -260,6 +285,16 @@ making changes.
     `overflow = TextOverflow.Ellipsis` so a still-too-long summary wraps
     instead of overflowing. Reproduced and visually re-confirmed fixed on
     "Цветной хитрец 6×6" specifically, per the original bug report.
+  - **Pre-undo confirmation dialog** (added 2026-08-12): tapping the undo
+    icon in `GameTopBar` no longer calls `onUndo` directly — `GameScreen`
+    wraps it in `onUndoClick`, which opens a local `AlertDialog`
+    ("Отменить ход?" / "Вы потеряете N очков за отмену хода.") whenever
+    `uiState.pendingUndoPenalty > 0`; confirming calls the real `onUndo`,
+    cancelling/dismissing does nothing. When the penalty preview is 0 (every
+    level touched by the `zeroOutUndoPenalties()` migration above, or any
+    level authored with an explicit 0% penalty), undo still fires
+    immediately with no dialog — see Notable product decisions for why this
+    was added the day right after the undo-penalty feature itself.
   - `GameScreen`'s top bar shows **score and record side by side** (labeled
     "счёт" / "рекорд"), passed in as `record: Int` from
     `MainActivity`'s `records[state.level.tag]`. The displayed record is
@@ -474,8 +509,52 @@ making changes.
   Don't change this shape (e.g. switch to flat-penalty, add an undo-count
   cap, or move it back to a global constant) without asking again — each of
   those was a real alternative the user considered and declined.
+- **Undo penalty: retroactive zero-out migration + a pre-undo confirmation
+  dialog** (added 2026-08-12, the day right after undo-penalty shipped): the
+  user hit two real problems from the feature above. First, her *existing*
+  records (all set when undo was free) became unbeatable once undo started
+  costing points — an unintentionally raised bar, not the intended effect.
+  Second, she tapped undo by accident once and lost a meaningful chunk of
+  score with no warning. Both fixes:
+  - **One-shot migration zeroing `undoPenaltyPercent` on every level that
+    existed at the time it runs**: `LevelsRepository.zeroOutUndoPenalties()`
+    (new `undo_penalty_zeroed_v1` DataStore flag, same one-shot pattern as
+    `defaultsSeeded`) + `DefaultLevels.zeroExistingUndoPenaltiesIfNeeded()`,
+    called from `GameViewModel.init` right after
+    `seedDefaultLevelsIfNeeded`. This is a blanket rewrite of whatever's
+    persisted at the moment it first runs — deliberately *not* scoped to
+    "only levels with a nonzero record" or anything fancier, since the user's
+    ask was specifically "all levels I have now" and the app has exactly one
+    installed instance (hers) that will ever see this migration fire.
+    Levels created *after* it fires are untouched and get the normal
+    `ScoringConfig.DEFAULT_UNDO_PENALTY_PERCENT` (20%) default, or whatever
+    she sets in the constructor — she confirmed she wants to keep using the
+    penalty feature for future levels, just not retroactively against old
+    records. On-device confirmed: all 5 of her existing levels (3 seeded
+    defaults + 2 custom) now show "· undo бесплатно" in their rules
+    summaries after installing the updated build.
+  - **`GameEngine.pendingUndoPenalty()`**: a pure preview of what an actual
+    `undo()` call would deduct right now (same
+    `ScoringConfig.undoPenalty(state.score, level.undoPenaltyPercent)` call
+    `undo()` itself makes), without mutating state — `0` whenever
+    `canUndo()` is false. Threaded into `GameUiState.pendingUndoPenalty` and
+    recomputed on every `publish()` in `GameViewModel`.
+  - **`GameScreen` shows an `AlertDialog`** ("Отменить ход?" / "Вы потеряете
+    N очков за отмену хода.") when the undo icon is tapped **and**
+    `pendingUndoPenalty > 0` — confirm actually calls `onUndo()`, dismiss/
+    cancel does nothing. When the penalty is 0 (any level touched by the
+    migration above, or one authored with an explicit 0% penalty) undo still
+    fires immediately with no dialog, matching the existing "0% is a real,
+    unpenalized choice" stance from the original undo-penalty feature — the
+    dialog exists to warn about a real loss, not to add friction where
+    there's none.
+  - Two new `GameEngineTest` cases cover `pendingUndoPenalty()` (matches
+    what `undo()` would actually deduct; `0` pre-first-move and on a
+    0%-penalty level). The dialog's on-device trigger path itself could not
+    be exercised end-to-end the same way the underlying math was — see
+    Status below.
 
-## Status as of last session (2026-08-11)
+## Status as of last session (2026-08-14)
 
 Level constructor implemented per the plan agreed with the user: domain model
 (`LevelDefinition`/`LevelShape`/`PieceShape`/`ShapeSymmetry`/`ShapeConnectivity`),
@@ -557,6 +636,65 @@ Compose's `detectDragGestures` (single linear swipes don't produce enough
 intermediate move events) — that's an automation limitation, not verified
 game behavior, so the actual point deduction on a real undo was confirmed
 via the new unit tests rather than an on-device play-through.
+
+**2026-08-12 session**: the day after undo-penalty shipped, the user reported
+two real problems from it — her pre-existing records became unbeatable now
+that undo costs points, and she'd lost real score to one accidental undo tap.
+Both fixed the same session; see the "Undo penalty: retroactive zero-out
+migration..." bullet in Notable product decisions for the full design
+account. Summary: (1) a one-shot `LevelsRepository.zeroOutUndoPenalties()`
+migration (gated by a new `undo_penalty_zeroed_v1` flag, wired into
+`GameViewModel.init` right after `seedDefaultLevelsIfNeeded`) set
+`undoPenaltyPercent` to 0 on every level that existed at the moment it first
+ran; (2) `GameEngine.pendingUndoPenalty()` previews the deduction an actual
+`undo()` would make, threaded through `GameUiState` into a new `GameScreen`
+confirmation `AlertDialog` ("Отменить ход?", showing the exact point count)
+that only appears when the preview is nonzero — a 0%-penalty undo (which,
+post-migration, is every one of her current levels) still fires immediately
+with no dialog. `assembleDebug` and `testDebugUnitTest` both green, with two
+new `GameEngineTest` cases for `pendingUndoPenalty()`.
+
+The migration half was visually confirmed end-to-end on-device: installed the
+updated APK, force-stopped and relaunched the app, and screenshotted the
+Топ-5 menu card, the "Играть" list, and the Конструктор list — all 5 of her
+levels (3 seeded defaults + "Мини" + "Мини-вызов") show "· undo бесплатно" in
+their rules summaries, confirming the zero-out took effect. The dialog itself
+was verified by code/logic and by the passing `pendingUndoPenalty()` unit
+tests, but **not** end-to-end on-device: reaching it requires actually
+placing a piece first (to make `canUndo()` true), and — as already noted in
+the 2026-08-11 entry above — programmatic drag-and-drop via `adb shell input
+swipe` doesn't register in Compose's `detectDragGestures`; `adb shell input
+draganddrop` was also tried this session as a alternative and likewise
+produced no placement. To sanity-check the save-as-copy flow along the way,
+a temporary level "Мини-вызов (копия)" was created (editing "Мини-вызов"'s
+undo penalty back up to 20% and choosing "Сохранить как копию" so the real
+"Мини-вызов" record of 1580 was never touched) — **this leftover test level
+is still sitting in her Конструктор list** with a 0 record and was not
+cleaned up because the phone locked (fingerprint lock, no PIN available to
+this session) before it could be deleted. Next session (or the user
+directly): delete "Мини-вызов (копия)" via its trash icon in Конструктор —
+harmless if left, since it doesn't touch any other level's data, but it's
+clutter she didn't ask for.
+
+**2026-08-14 session**: small level-editor fix, unrelated to the undo-penalty
+work above. The user asked to stop the level-name field from wrapping a long
+name onto a second line, and instead have the keyboard's Enter key just close
+the keyboard. Fixed in `LevelEditorScreen.kt`'s name `OutlinedTextField` —
+see the bullet above under `LevelEditorScreen`. `assembleDebug` and
+`testDebugUnitTest` both green (no domain-layer change, so no new unit
+tests). Visually confirmed on-device via `adb shell input tap`/`input text`
+into the field (found the field's exact bounds via `adb shell uiautomator
+dump` — a blind coordinate guess on this screen missed the field and instead
+hit the in-app back button, which underscored that on this app system Back
+always exits the Activity outright rather than navigating up a screen, since
+navigation is hand-rolled `AnimatedContent` rather than Jetpack Navigation
+with a back-stack; recovering just meant relaunching, no data was affected).
+The "Мини-вызов (копия)" leftover test level mentioned in the 2026-08-12
+entry above was already gone by the start of this session — nothing to clean
+up. The phone's aggressive lock/sleep (noted in earlier sessions) recurred
+mid-round after the on-device confirmation screenshots were already taken;
+screencap came back solid black afterward and wasn't retried since the fix
+was already verified.
 
 Google Play publishing was explicitly **paused** by the user 2026-08-11 (she
 said she changed her mind about it "for now") in favor of this feature —
